@@ -1,7 +1,6 @@
 import streamlit as st
 import sqlite3, os, time
 from fpdf import FPDF
-import razorpay
 
 # ---------------------------
 # CSS Styling
