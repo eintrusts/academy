@@ -74,13 +74,13 @@ CREATE TABLE IF NOT EXISTS certificates (
 conn.commit()
 
 # ----------------------------
-# INSERT DUMMY COURSES & LESSONS
+# INSERT DUMMY DATA
 # ----------------------------
 def insert_dummy_data():
     try:
         courses = [
-            ("Sustainability Basics", "Introduction to Sustainability",
-             "Learn the fundamentals of sustainability and eco-friendly practices.", 499.0, "Sustainability", "https://via.placeholder.com/350x150"),
+            ("Sustainability Basics", "Intro to Sustainability",
+             "Learn fundamentals of sustainability and eco-friendly practices.", 499.0, "Sustainability", "https://via.placeholder.com/350x150"),
             ("Climate Change Fundamentals", "Understand Climate Change",
              "Explore causes, impacts, and mitigation strategies of climate change.", 599.0, "Climate Change", "https://via.placeholder.com/350x150"),
             ("ESG & Corporate Responsibility", "Environmental, Social & Governance",
@@ -93,11 +93,10 @@ def insert_dummy_data():
             """, (title, subtitle, desc, float(price), cat, banner))
         conn.commit()
 
-        # Lessons for each course
         lessons = {
-            1: [("Introduction to Sustainability","text",""), ("Global Practices","pdf",""), ("Local Action","video","")],
-            2: [("Causes of Climate Change","text",""), ("Impacts","pdf",""), ("Mitigation Strategies","video","")],
-            3: [("What is ESG","text",""), ("Reporting Standards","pdf",""), ("Case Studies","video","")]
+            1: [("Intro","text",""), ("Global Practices","pdf",""), ("Local Action","video","")],
+            2: [("Causes","text",""), ("Impacts","pdf",""), ("Mitigation","video","")],
+            3: [("What is ESG","text",""), ("Reporting","pdf",""), ("Case Studies","video","")]
         }
         for cid, les in lessons.items():
             for title, ctype, path in les:
@@ -141,10 +140,9 @@ a:hover {color: #009acd;}
 """, unsafe_allow_html=True)
 
 # ----------------------------
-# UTILITY
+# UTILITIES
 # ----------------------------
 def hash_password(pw): return hashlib.sha256(pw.encode()).hexdigest()
-
 def verify_password(pw, hashed): return hash_password(pw) == hashed
 
 # ----------------------------
@@ -154,7 +152,6 @@ def top_nav():
     c.execute("SELECT DISTINCT category FROM courses")
     categories = [row[0] for row in c.fetchall()]
     categories = ["All"] + categories
-
     col1, col2, col3 = st.columns([2,5,2])
     with col1: st.image("https://github.com/eintrusts/CAP/blob/main/EinTrust%20%20(2).png", width=180)
     with col2:
@@ -168,6 +165,7 @@ def top_nav():
     with col3:
         if st.session_state.student_id is None:
             if st.button("Login", key="login_btn_top"): st.session_state.page = "login"
+        if st.button("Admin", key="admin_btn"): st.session_state.page = "admin_login"
     return search_query, category_filter
 
 # ----------------------------
@@ -181,7 +179,6 @@ def display_courses(search_query="", category_filter="All"):
         params.append(category_filter)
     courses = c.execute(query, params).fetchall()
     if search_query: courses = [crs for crs in courses if search_query.lower() in crs[1].lower()]
-
     for crs in courses:
         st.markdown(f"""
         <div class="course-card" style="padding:15px; margin:10px; border:1px solid #333; border-radius:10px;">
@@ -209,5 +206,3 @@ def main():
     if st.session_state.page == "home": home_page()
 
 main()
-
-
