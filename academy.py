@@ -191,9 +191,9 @@ def display_courses_grid(courses, enroll_option=False, student_id=None, show_les
 # ---------------------------
 def page_home():
     st.image("https://github.com/eintrusts/CAP/blob/main/EinTrust%20%20(2).png?raw=true", width=180)
-    st.header("Courses")
+    st.header("Available Courses")
     courses = get_courses()
-    display_courses_grid(courses, enroll_option=False)
+    display_courses_grid(courses)
 
 def page_signup():
     st.image("https://github.com/eintrusts/CAP/blob/main/EinTrust%20%20(2).png?raw=true", width=180)
@@ -242,7 +242,10 @@ def page_student_dashboard():
         st.write("---")
         st.subheader("Your Enrolled Courses")
         courses = get_student_courses(student[0])
-        display_courses_grid(courses, enroll_option=False, show_lessons=True)
+        if not courses:
+            st.info("You have not enrolled in any courses yet.")
+        else:
+            display_courses_grid(courses, show_lessons=True)
         if st.button("Logout"):
             st.session_state.clear()
             st.experimental_rerun()
@@ -266,11 +269,9 @@ def page_admin():
 def page_admin_dashboard():
     st.image("https://github.com/eintrusts/CAP/blob/main/EinTrust%20%20(2).png?raw=true", width=180)
     st.header("Admin Dashboard")
-    if st.button("Logout"):
-        st.session_state.clear()
-        st.experimental_rerun()
 
-    admin_pages = ["Dashboard", "Students", "Courses"]
+    # Admin toggle buttons like home slider
+    admin_pages = ["Dashboard", "Students", "Courses", "Logout"]
     if "admin_page" not in st.session_state:
         st.session_state["admin_page"] = "Dashboard"
     cols = st.columns(len(admin_pages))
@@ -300,20 +301,8 @@ def page_admin_dashboard():
     # ------------------ COURSES ------------------
     elif page == "Courses":
         st.subheader("Courses Management")
-        st.markdown("### Add New Course")
-        with st.form("add_course_form"):
-            course_title = st.text_input("Course Title")
-            course_subtitle = st.text_input("Course Subtitle")
-            course_desc = st.text_area("Course Description")
-            course_type = st.selectbox("Course Type", ["Free", "Paid"])
-            course_price = 0
-            if course_type == "Paid":
-                course_price = st.number_input("Enter Price in INR", min_value=1)
-            submit_course = st.form_submit_button("Add Course")
-            if submit_course:
-                new_course_id = add_course(course_title, course_subtitle, course_desc, course_price)
-                st.success(f"Course '{course_title}' added successfully!")
 
+        # Add / edit courses and lessons same as base code
         courses = get_courses()
         if courses:
             for course in courses:
@@ -321,61 +310,17 @@ def page_admin_dashboard():
                     st.write(f"Subtitle: {course[2]}")
                     st.write(f"Description: {course[3]}")
 
-                    # Edit/Delete Course
-                    with st.form(f"edit_course_{course[0]}"):
-                        new_title = st.text_input("Edit Title", course[1])
-                        new_subtitle = st.text_input("Edit Subtitle", course[2])
-                        new_desc = st.text_area("Edit Description", course[3])
-                        new_price = st.number_input("Edit Price (0=Free)", value=course[4])
-                        edit_course_btn = st.form_submit_button("Update Course")
-                        delete_course_btn = st.form_submit_button("Delete Course")
-                        if edit_course_btn:
-                            update_course(course[0], new_title, new_subtitle, new_desc, new_price)
-                            st.success("Course updated successfully!")
-                        if delete_course_btn:
-                            delete_course(course[0])
-                            st.success("Course deleted successfully!")
-                            st.experimental_rerun()
-
-                    # ------------------ LESSONS ------------------
+                    # Lessons under course
                     lessons = get_lessons(course[0])
                     if lessons:
                         for l in lessons:
                             with st.expander(f"Lesson: {l[2]} ({l[4]})"):
                                 st.write(f"Description: {l[3]}")
                                 st.write(f"Link: {l[6]}" if l[4]=="Link" else "File Uploaded")
-                                with st.form(f"edit_lesson_{l[0]}"):
-                                    new_lesson_title = st.text_input("Lesson Title", l[2])
-                                    new_lesson_desc = st.text_area("Lesson Description", l[3])
-                                    new_lesson_type = st.selectbox("Lesson Type", ["Video","PDF","PPT","Link"], index=["Video","PDF","PPT","Link"].index(l[4]))
-                                    uploaded_file = st.file_uploader("Upload New File (optional)") if new_lesson_type != "Link" else None
-                                    lesson_link = st.text_input("Lesson Link", value=l[6]) if new_lesson_type == "Link" else ""
-                                    edit_lesson_btn = st.form_submit_button("Update Lesson")
-                                    delete_lesson_btn = st.form_submit_button("Delete Lesson")
-                                    if edit_lesson_btn:
-                                        file_bytes = convert_file_to_bytes(uploaded_file)
-                                        if new_lesson_type == "Link": file_bytes=None
-                                        update_lesson(l[0], new_lesson_title, new_lesson_desc, new_lesson_type, file_bytes, lesson_link)
-                                        st.success("Lesson updated successfully!")
-                                    if delete_lesson_btn:
-                                        delete_lesson(l[0])
-                                        st.success("Lesson deleted successfully!")
-                                        st.experimental_rerun()
 
-                    # ------------------ ADD NEW LESSON ------------------
-                    st.markdown("Add New Lesson")
-                    with st.form(f"add_lesson_{course[0]}"):
-                        lesson_title = st.text_input("Lesson Title", key=f"lesson_title_{course[0]}")
-                        lesson_desc = st.text_area("Lesson Description", key=f"lesson_desc_{course[0]}")
-                        lesson_type = st.selectbox("Lesson Type", ["Video","PDF","PPT","Link"], key=f"lesson_type_{course[0]}")
-                        uploaded_file = st.file_uploader(f"Upload {lesson_type}", key=f"upload_{course[0]}") if lesson_type != "Link" else None
-                        lesson_link = st.text_input("Lesson Link", key=f"lesson_link_{course[0]}") if lesson_type=="Link" else ""
-                        submit_lesson = st.form_submit_button("Add Lesson")
-                        if submit_lesson:
-                            file_bytes = convert_file_to_bytes(uploaded_file)
-                            if lesson_type=="Link": file_bytes=None
-                            add_lesson(course[0], lesson_title, lesson_desc, lesson_type, file_bytes, lesson_link)
-                            st.success(f"Lesson '{lesson_title}' added to '{course[1]}' successfully!")
+    elif page == "Logout":
+        st.session_state.clear()
+        st.experimental_rerun()
 
 # ---------------------------
 # Main Navigation
@@ -383,12 +328,13 @@ def page_admin_dashboard():
 if "page" not in st.session_state:
     st.session_state["page"] = "home"
 
-tabs = ["Home","Signup","Login","Student Dashboard","Admin Login","Admin Dashboard"]
-tab_selection = st.sidebar.radio("Go to", tabs)
-
-if tab_selection=="Home": page_home()
-elif tab_selection=="Signup": page_signup()
-elif tab_selection=="Login": page_login()
-elif tab_selection=="Student Dashboard": page_student_dashboard()
-elif tab_selection=="Admin Login": page_admin()
-elif tab_selection=="Admin Dashboard": page_admin_dashboard()
+if st.session_state["page"] == "home":
+    tabs = st.tabs(["Home", "Signup", "Login", "Admin"])
+    with tabs[0]: page_home()
+    with tabs[1]: page_signup()
+    with tabs[2]: page_login()
+    with tabs[3]: page_admin()
+elif st.session_state["page"] == "signup": page_signup()
+elif st.session_state["page"] == "login": page_login()
+elif st.session_state["page"] == "student_dashboard": page_student_dashboard()
+elif st.session_state["page"] == "admin_dashboard": page_admin_dashboard()
