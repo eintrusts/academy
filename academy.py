@@ -62,7 +62,7 @@ CREATE TABLE IF NOT EXISTS enrollments (
 conn.commit()
 
 # ----------------------------
-# DUMMY DATA INSERTION
+# DUMMY DATA INSERTION (SAFE)
 # ----------------------------
 def insert_dummy_data():
     courses = [
