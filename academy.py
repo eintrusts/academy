@@ -3,7 +3,6 @@ import sqlite3
 import re
 from PIL import Image
 import io
-import base64
 
 # ---------------------------
 # DB Setup
@@ -38,7 +37,7 @@ conn.commit()
 # Utility Functions
 # ---------------------------
 def is_valid_email(email):
-    return re.match(r"[^@]+@[^@]+\.[^@]+", email)
+    return re.match(r"^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$", email)
 
 def is_valid_password(password):
     return (len(password) >= 8 and
@@ -108,7 +107,8 @@ st.markdown("""
 # ---------------------------
 
 def page_home():
-    st.header("📚 Available Courses")
+    st.image("https://github.com/eintrusts/CAP/blob/main/EinTrust%20%20(2).png?raw=true", width=180)
+    st.header("Available Courses")
     courses = get_courses()
     if not courses:
         st.info("No courses available yet.")
@@ -127,7 +127,8 @@ def page_home():
                     st.session_state["page"] = "signup"
 
 def page_signup():
-    st.header("📝 Create Profile")
+    st.image("https://github.com/eintrusts/CAP/blob/main/EinTrust%20%20(2).png?raw=true", width=180)
+    st.header("Create Profile")
     with st.form("signup_form"):
         profile_picture = st.file_uploader("Profile Picture", type=["png","jpg","jpeg"])
         full_name = st.text_input("Full Name")
@@ -140,33 +141,35 @@ def page_signup():
 
         if submitted:
             if not is_valid_email(email):
-                st.error("❌ Enter a valid email address.")
+                st.error("Enter a valid email address.")
             elif not is_valid_password(password):
-                st.error("❌ Password does not meet security requirements.")
+                st.error("Password must have 8+ chars, 1 uppercase, 1 number, 1 special char.")
             else:
                 img_bytes = convert_image_to_bytes(profile_picture)
                 success = add_student(full_name, email, password, gender, profession, institution, img_bytes)
                 if success:
-                    st.success("✅ Profile created successfully! Please login.")
+                    st.success("Profile created successfully! Please login.")
                     st.session_state["page"] = "login"
                 else:
-                    st.error("❌ Email already registered. Please login.")
+                    st.error("Email already registered. Please login.")
 
 def page_login():
-    st.header("🔑 Student Login")
+    st.image("https://github.com/eintrusts/CAP/blob/main/EinTrust%20%20(2).png?raw=true", width=180)
+    st.header("Student Login")
     email = st.text_input("Email ID", key="login_email")
     password = st.text_input("Password", type="password", key="login_pass")
     if st.button("Login"):
         student = authenticate_student(email, password)
         if student:
-            st.success("✅ Login successful!")
+            st.success("Login successful!")
             st.session_state["student"] = student
             st.session_state["page"] = "dashboard"
         else:
-            st.error("❌ Invalid credentials.")
+            st.error("Invalid credentials.")
 
 def page_dashboard():
-    st.header("🎓 Student Dashboard")
+    st.image("https://github.com/eintrusts/CAP/blob/main/EinTrust%20%20(2).png?raw=true", width=180)
+    st.header("Student Dashboard")
     student = st.session_state.get("student")
     if student:
         st.write(f"Welcome, {student[1]}!")
@@ -174,10 +177,32 @@ def page_dashboard():
     else:
         st.warning("Please login first.")
 
+def page_admin():
+    st.image("https://github.com/eintrusts/CAP/blob/main/EinTrust%20%20(2).png?raw=true", width=180)
+    st.header("Admin Login")
+    admin_pass = st.text_input("Enter Admin Password", type="password")
+    if st.button("Login as Admin"):
+        if admin_pass == "admin123":  # Change this to secure password
+            st.success("Welcome Admin")
+            st.subheader("Dashboard")
+            st.write("Manage courses and students here.")
+
+            st.subheader("All Students")
+            students = c.execute("SELECT full_name,email,profession,institution FROM students").fetchall()
+            for s in students:
+                st.write(s)
+
+            st.subheader("All Courses")
+            courses = get_courses()
+            for c_row in courses:
+                st.write(c_row)
+        else:
+            st.error("Wrong admin password.")
+
 # ---------------------------
 # MAIN NAVIGATION
 # ---------------------------
-tabs = st.tabs(["Home", "Signup", "Login"])
+tabs = st.tabs(["Home", "Signup", "Login", "Admin"])
 
 with tabs[0]:
     page_home()
@@ -188,3 +213,5 @@ with tabs[2]:
         page_dashboard()
     else:
         page_login()
+with tabs[3]:
+    page_admin()
