@@ -7,7 +7,7 @@ from datetime import datetime
 conn = sqlite3.connect("academy.db", check_same_thread=False)
 c = conn.cursor()
 
-# Create tables
+# ------------------- TABLE CREATION -------------------
 def create_tables():
     c.execute("""CREATE TABLE IF NOT EXISTS students (
                     student_id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -63,44 +63,12 @@ def create_tables():
                     FOREIGN KEY(student_id) REFERENCES students(student_id),
                     FOREIGN KEY(course_id) REFERENCES courses(course_id)
                 )""")
+    
+    # Insert default admin if not exists
+    c.execute("INSERT OR IGNORE INTO admin (admin_id, password) VALUES (1, ?)", ('admin123',))
     conn.commit()
 
 create_tables()
-
-# ------------------- DUMMY DATA -------------------
-def insert_dummy_data():
-    # Admin default password
-    c.execute("INSERT OR IGNORE INTO admin (admin_id, password) VALUES (1, ?)", ('admin123',))
-
-    # Courses
-    dummy_courses = [
-        ("Sustainability Basics", "Intro to Sustainability", "Learn sustainability fundamentals", 499.0, "Sustainability", "https://via.placeholder.com/350x150"),
-        ("Climate Change Fundamentals", "Understand Climate Change", "Explore causes & solutions", 599.0, "Climate", "https://via.placeholder.com/350x150"),
-        ("ESG for Beginners", "Environmental, Social, Governance", "Basics of ESG reporting & frameworks", 699.0, "ESG", "https://via.placeholder.com/350x150")
-    ]
-    for course in dummy_courses:
-        c.execute("""
-            INSERT OR IGNORE INTO courses (title, subtitle, description, price, category, banner_path)
-            VALUES (?,?,?,?,?,?)
-        """, course)
-    
-    conn.commit()
-
-    # Lessons
-    c.execute("SELECT course_id FROM courses")
-    course_ids = c.fetchall()
-    for course_id_tuple in course_ids:
-        course_id = course_id_tuple[0]
-        lessons = [("Lesson 1: Intro", "video", "https://via.placeholder.com/640x360"),
-                   ("Lesson 2: Details", "pdf", "https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf")]
-        for lesson in lessons:
-            c.execute("""
-                INSERT OR IGNORE INTO lessons (course_id, title, content_type, content_path)
-                VALUES (?,?,?,?)
-            """, (course_id, lesson[0], lesson[1], lesson[2]))
-    conn.commit()
-
-insert_dummy_data()
 
 # ------------------- STREAMLIT CONFIG -------------------
 st.set_page_config(page_title="EinTrust Academy", layout="wide")
@@ -108,10 +76,15 @@ st.markdown("""
 <style>
 body {background-color:#121212; color:white; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;}
 div.stButton > button:first-child {background-color:#1E88E5; color:white; border-radius:8px; height:40px;}
+input {color:black;}
 </style>
 """, unsafe_allow_html=True)
 
-# ------------------- TOP NAV -------------------
+# ------------------- UTILITY -------------------
+def hash_password(password):
+    return hashlib.sha256(password.encode()).hexdigest()
+
+# ------------------- NAVIGATION -------------------
 def top_nav():
     col1, col2, col3 = st.columns([1,3,1])
     with col1:
@@ -137,11 +110,93 @@ def home_page():
         </div>
         """, unsafe_allow_html=True)
 
-# ------------------- RUN APP -------------------
+# ------------------- STUDENT SIGNUP -------------------
+def student_signup():
+    st.subheader("Student Sign Up")
+    full_name = st.text_input("Full Name *")
+    email = st.text_input("Email ID *")
+    password = st.text_input("Set Password *", type='password')
+    st.markdown("**Password rules:** Min 8 characters, 1 uppercase, 1 number, 1 special char (@, #, *)")
+    mobile = st.text_input("Mobile")
+    profession = st.selectbox("Profession", ["Student", "Working Professional"])
+    institution = st.text_input("Institution")
+    sex = st.selectbox("Sex", ["Male", "Female", "Prefer not to say"])
+    profile_pic = st.file_uploader("Profile Picture (optional)", type=['png','jpg','jpeg'])
+    
+    if st.button("Create Profile"):
+        if not full_name or not email or not password:
+            st.error("Full Name, Email, and Password are mandatory")
+            return
+        hashed_pwd = hash_password(password)
+        c.execute("INSERT INTO students (full_name,email,password,mobile,profession,institution,sex,profile_pic) VALUES (?,?,?,?,?,?,?,?)",
+                  (full_name,email,hashed_pwd,mobile,profession,institution,sex,None))
+        conn.commit()
+        st.success("Profile created! Please login now.")
+        st.session_state['page'] = "login"
+
+# ------------------- STUDENT LOGIN -------------------
+def student_login():
+    st.subheader("Student Login")
+    email = st.text_input("Email ID")
+    password = st.text_input("Password", type='password')
+    if st.button("Login"):
+        hashed_pwd = hash_password(password)
+        user = c.execute("SELECT * FROM students WHERE email=? AND password=?", (email, hashed_pwd)).fetchone()
+        if user:
+            st.session_state['student_id'] = user[0]
+            st.session_state['page'] = "student_dashboard"
+        else:
+            st.error("Incorrect email/password")
+
+# ------------------- ADMIN LOGIN -------------------
+def admin_login():
+    st.subheader("Admin Login")
+    password = st.text_input("Enter Admin Password", type='password')
+    if st.button("Enter"):
+        admin = c.execute("SELECT * FROM admin WHERE password=?", (password,)).fetchone()
+        if admin:
+            st.session_state['page'] = "admin_dashboard"
+        else:
+            st.error("Incorrect password")
+
+# ------------------- STUDENT DASHBOARD -------------------
+def student_dashboard():
+    st.subheader("Student Dashboard")
+    student_id = st.session_state['student_id']
+    st.markdown("### Your Courses")
+    # Show enrolled courses
+    enrolled_courses = c.execute("""
+        SELECT DISTINCT courses.course_id,courses.title FROM courses
+        JOIN lessons ON courses.course_id = lessons.course_id
+        JOIN progress ON lessons.lesson_id = progress.lesson_id
+        WHERE progress.student_id=?
+    """,(student_id,)).fetchall()
+    for course in enrolled_courses:
+        st.markdown(f"**{course[1]}**")
+
+# ------------------- ADMIN DASHBOARD -------------------
+def admin_dashboard():
+    st.subheader("Admin Dashboard")
+    st.markdown("### All Students")
+    students = c.execute("SELECT student_id, full_name, email, mobile, profession, institution, sex FROM students").fetchall()
+    st.table(students)
+
+# ------------------- APP MAIN -------------------
 if 'page' not in st.session_state:
     st.session_state['page'] = 'home'
 
-if st.session_state['page'] == 'home':
+page = st.session_state['page']
+
+if page == 'home':
     home_page()
-elif st.session_state['page'] == 'login':
-    st.write("Login Page Placeholder")
+    st.sidebar.button("Admin", on_click=lambda: st.session_state.update({'page':'admin_login'}))
+elif page == 'login':
+    student_login()
+    st.markdown("Or create a new account below:")
+    student_signup()
+elif page == 'admin_login':
+    admin_login()
+elif page == 'student_dashboard':
+    student_dashboard()
+elif page == 'admin_dashboard':
+    admin_dashboard()
