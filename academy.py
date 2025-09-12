@@ -86,12 +86,10 @@ def hash_password(password):
 
 # ------------------- NAVIGATION -------------------
 def top_nav():
-    col1, col2, col3 = st.columns([1,3,1])
+    col1, col2 = st.columns([1,1])
     with col1:
         st.image("https://github.com/eintrusts/CAP/blob/main/EinTrust%20%20(2).png?raw=true", width=180)
     with col2:
-        st.markdown("<h3 style='text-align:center;'>Browse Courses | About</h3>", unsafe_allow_html=True)
-    with col3:
         if st.button("Login"):
             st.session_state['page'] = "login"
 
@@ -100,13 +98,16 @@ def home_page():
     top_nav()
     st.markdown("## Available Courses")
     courses = c.execute("SELECT course_id,title,subtitle,description,price,banner_path FROM courses ORDER BY course_id DESC").fetchall()
+    if not courses:
+        st.info("No courses available. Admin can add courses from dashboard.")
     for course in courses:
         st.markdown(f"""
-        <div style='border:1px solid #555; padding:10px; margin-bottom:10px; border-radius:10px;'>
-        <h4>{course[1]}</h4>
+        <div style='border:1px solid #555; padding:15px; margin-bottom:15px; border-radius:10px; background-color:#1C1C1C'>
+        <h3>{course[1]}</h3>
         <p>{course[2]}</p>
         <p>{course[3]}</p>
         <p>Price: ₹{int(course[4]):,}</p>
+        <button onclick="window.location.href='/course_preview?course_id={course[0]}'" style='padding:5px 10px; border-radius:5px; background-color:#1E88E5; color:white;'>Preview & Enroll</button>
         </div>
         """, unsafe_allow_html=True)
 
@@ -128,11 +129,14 @@ def student_signup():
             st.error("Full Name, Email, and Password are mandatory")
             return
         hashed_pwd = hash_password(password)
-        c.execute("INSERT INTO students (full_name,email,password,mobile,profession,institution,sex,profile_pic) VALUES (?,?,?,?,?,?,?,?)",
-                  (full_name,email,hashed_pwd,mobile,profession,institution,sex,None))
-        conn.commit()
-        st.success("Profile created! Please login now.")
-        st.session_state['page'] = "login"
+        try:
+            c.execute("INSERT INTO students (full_name,email,password,mobile,profession,institution,sex,profile_pic) VALUES (?,?,?,?,?,?,?,?)",
+                      (full_name,email,hashed_pwd,mobile,profession,institution,sex,None))
+            conn.commit()
+            st.success("Profile created! Please login now.")
+            st.session_state['page'] = "login"
+        except sqlite3.IntegrityError:
+            st.error("Email already exists.")
 
 # ------------------- STUDENT LOGIN -------------------
 def student_login():
@@ -164,13 +168,14 @@ def student_dashboard():
     st.subheader("Student Dashboard")
     student_id = st.session_state['student_id']
     st.markdown("### Your Courses")
-    # Show enrolled courses
     enrolled_courses = c.execute("""
         SELECT DISTINCT courses.course_id,courses.title FROM courses
         JOIN lessons ON courses.course_id = lessons.course_id
         JOIN progress ON lessons.lesson_id = progress.lesson_id
         WHERE progress.student_id=?
     """,(student_id,)).fetchall()
+    if not enrolled_courses:
+        st.info("You have not enrolled in any courses yet.")
     for course in enrolled_courses:
         st.markdown(f"**{course[1]}**")
 
