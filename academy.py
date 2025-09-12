@@ -1,6 +1,5 @@
 import streamlit as st
 import sqlite3
-import hashlib
 
 # ------------------------------
 # Database Setup
@@ -14,17 +13,7 @@ def init_db():
     conn = get_connection()
     c = conn.cursor()
 
-    # Users table
-    c.execute("""
-    CREATE TABLE IF NOT EXISTS users (
-        user_id INTEGER PRIMARY KEY AUTOINCREMENT,
-        username TEXT UNIQUE NOT NULL,
-        password TEXT NOT NULL,
-        role TEXT NOT NULL
-    )
-    """)
-
-    # Courses table
+    # Create tables if not exist
     c.execute("""
     CREATE TABLE IF NOT EXISTS courses (
         course_id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -36,8 +25,6 @@ def init_db():
         banner_path TEXT
     )
     """)
-
-    # Lessons table
     c.execute("""
     CREATE TABLE IF NOT EXISTS lessons (
         lesson_id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -48,32 +35,12 @@ def init_db():
         FOREIGN KEY(course_id) REFERENCES courses(course_id) ON DELETE CASCADE
     )
     """)
-
-    # ✅ Insert default admin if not exists
-    c.execute("SELECT * FROM users WHERE username='admin'")
-    if not c.fetchone():
-        c.execute("INSERT INTO users (username, password, role) VALUES (?,?,?)",
-                  ('admin', hash_password('admin123'), 'admin'))
-
     conn.commit()
     conn.close()
 
 # ------------------------------
 # Utility Functions
 # ------------------------------
-def hash_password(password):
-    return hashlib.sha256(password.encode()).hexdigest()
-
-def verify_user(username, password):
-    conn = get_connection()
-    c = conn.cursor()
-    c.execute("SELECT user_id, username, password, role FROM users WHERE username=?", (username,))
-    user = c.fetchone()
-    conn.close()
-    if user and user[2] == hash_password(password):
-        return {"user_id": user[0], "username": user[1], "role": user[3]}
-    return None
-
 def fetch_courses():
     conn = get_connection()
     c = conn.cursor()
@@ -119,7 +86,7 @@ def home_page():
 
     courses = fetch_courses()
     if not courses:
-        st.info("No courses available yet. Please check again later.")
+        st.info("No courses available yet. Please add courses from the Admin section.")
     else:
         for course_id, title, subtitle, desc, price, category, banner in courses:
             with st.expander(f"{title} ({category}) - ₹{price:,.2f}"):
@@ -181,62 +148,26 @@ def admin_page():
         st.info("Please add a course first.")
 
 # ------------------------------
-# Authentication
-# ------------------------------
-def login_page():
-    st.title("🔑 Login to EinTrust Academy")
-    username = st.text_input("Username")
-    password = st.text_input("Password", type="password")
-    if st.button("Login"):
-        user = verify_user(username, password)
-        if user:
-            st.session_state["user"] = user
-            st.success(f"Welcome, {user['username']}! Role: {user['role']}")
-            st.session_state["page"] = "home"
-            st.rerun()
-        else:
-            st.error("Invalid username or password")
-
-# ------------------------------
 # Main
 # ------------------------------
 def main():
     st.set_page_config(page_title="EinTrust Academy", page_icon="🎓", layout="wide")
 
-    init_db()  # ✅ ensures DB is ready
+    init_db()  # ✅ Ensures tables exist before anything else
 
-    # Session state setup
-    if "user" not in st.session_state:
-        st.session_state["user"] = None
+    menu = ["Home", "Admin"]
+    choice = st.sidebar.radio("Navigate", menu)
+
     if "page" not in st.session_state:
-        st.session_state["page"] = "login"
+        st.session_state["page"] = "home"
 
-    # Navigation
-    if st.session_state["user"]:
-        menu = ["Home"]
-        if st.session_state["user"]["role"] == "admin":
-            menu.append("Admin")
-        menu.append("Logout")
-
-        choice = st.sidebar.radio("Navigate", menu)
-
-        if choice == "Home":
-            if st.session_state["page"] == "home":
-                home_page()
-            elif st.session_state["page"] == "course":
-                course_page(st.session_state["course_id"])
-        elif choice == "Admin":
-            if st.session_state["user"]["role"] == "admin":
-                admin_page()
-            else:
-                st.error("Access denied. Admins only.")
-        elif choice == "Logout":
-            st.session_state["user"] = None
-            st.session_state["page"] = "login"
-            st.rerun()
-    else:
-        login_page()
+    if choice == "Home":
+        if st.session_state["page"] == "home":
+            home_page()
+        elif st.session_state["page"] == "course":
+            course_page(st.session_state["course_id"])
+    elif choice == "Admin":
+        admin_page()
 
 if __name__ == "__main__":
     main()
-
