@@ -31,9 +31,9 @@ CREATE TABLE IF NOT EXISTS courses (
     title TEXT UNIQUE,
     subtitle TEXT,
     description TEXT,
-    price REAL,
-    category TEXT,
-    banner_path TEXT
+    price REAL DEFAULT 0,
+    category TEXT DEFAULT 'General',
+    banner_path TEXT DEFAULT ''
 )
 """)
 
@@ -62,50 +62,27 @@ CREATE TABLE IF NOT EXISTS enrollments (
 conn.commit()
 
 # -----------------------------
-# DUMMY DATA INSERTION
+# INSERT DUMMY DATA ONLY IF EMPTY
 # -----------------------------
 def insert_dummy_data():
+    existing = c.execute("SELECT COUNT(*) FROM courses").fetchone()[0]
+    if existing > 0:
+        return  # Already has data
+
     courses = [
-        {
-            "title": "Sustainability Basics",
-            "subtitle": "Intro to Sustainability",
-            "description": "Learn fundamentals of sustainability and eco-friendly practices.",
-            "price": 499.0,
-            "category": "Sustainability",
-            "banner_path": "https://via.placeholder.com/350x150"
-        },
-        {
-            "title": "Climate Change Fundamentals",
-            "subtitle": "Understand Climate Change",
-            "description": "Explore causes, impacts, and mitigation strategies of climate change.",
-            "price": 599.0,
-            "category": "Climate Change",
-            "banner_path": "https://via.placeholder.com/350x150"
-        },
-        {
-            "title": "ESG & Corporate Responsibility",
-            "subtitle": "Environmental, Social & Governance",
-            "description": "Dive into ESG concepts, reporting standards, and real-world case studies.",
-            "price": 799.0,
-            "category": "ESG",
-            "banner_path": "https://via.placeholder.com/350x150"
-        }
+        {"title":"Sustainability Basics","subtitle":"Intro to Sustainability","description":"Learn fundamentals of sustainability and eco-friendly practices.","price":499.0,"category":"Sustainability","banner_path":"https://via.placeholder.com/350x150"},
+        {"title":"Climate Change Fundamentals","subtitle":"Understand Climate Change","description":"Explore causes, impacts, and mitigation strategies of climate change.","price":599.0,"category":"Climate Change","banner_path":"https://via.placeholder.com/350x150"},
+        {"title":"ESG & Corporate Responsibility","subtitle":"Environmental, Social & Governance","description":"Dive into ESG concepts, reporting standards, and real-world case studies.","price":799.0,"category":"ESG","banner_path":"https://via.placeholder.com/350x150"}
     ]
 
     for course in courses:
-        title = course.get("title","")
-        subtitle = course.get("subtitle","")
-        desc = course.get("description","")
-        price = float(course.get("price",0))
-        cat = course.get("category","General")
-        banner = course.get("banner_path","")
-
         c.execute("""
             INSERT OR IGNORE INTO courses (title, subtitle, description, price, category, banner_path)
             VALUES (?,?,?,?,?,?)
-        """, (title, subtitle, desc, price, cat, banner))
+        """, (course['title'], course['subtitle'], course['description'], float(course['price']), course['category'], course['banner_path']))
     conn.commit()
 
+    # Dummy lessons
     lessons = {
         "Sustainability Basics": [("Intro","text",""), ("Global Practices","pdf",""), ("Local Action","video","")],
         "Climate Change Fundamentals": [("Causes","text",""), ("Impacts","pdf",""), ("Mitigation","video","")],
@@ -129,9 +106,7 @@ insert_dummy_data()
 # SESSION STATE
 # -----------------------------
 if 'student_id' not in st.session_state: st.session_state.student_id = None
-if 'admin_logged_in' not in st.session_state: st.session_state.admin_logged_in = False
 if 'page' not in st.session_state: st.session_state.page = "home"
-if 'enrolled_course' not in st.session_state: st.session_state.enrolled_course = None
 
 # -----------------------------
 # STYLING
@@ -145,7 +120,6 @@ a:hover {color: #009acd;}
 .course-card:hover {background-color:#1e1e1e; transform: scale(1.02); transition: 0.3s;}
 .top-nav {background-color:#1f1f1f; padding:10px 20px; position:sticky; top:0; z-index:9999; display:flex; align-items:center; justify-content:space-between; border-bottom:1px solid #333;}
 .nav-center {display:flex; gap:15px; align-items:center;}
-.nav-center input, .nav-center select {padding:5px; border-radius:5px; border:none;}
 .nav-link {margin-right:15px; color:#f0f0f0; font-weight:bold; cursor:pointer;}
 .nav-link:hover {color:#00bfff;}
 .btn-hover {background-color:#00bfff; color:#000; padding:6px 15px; border-radius:5px; font-weight:bold;}
@@ -184,7 +158,6 @@ def top_nav():
     with col3:
         if st.session_state.student_id is None:
             if st.button("Login", key="login_btn_top"): st.session_state.page = "login"
-        if st.button("Admin", key="admin_btn"): st.session_state.page = "admin_login"
     return search_query, category_filter
 
 # -----------------------------
