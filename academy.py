@@ -3,6 +3,8 @@ import sqlite3
 import datetime
 from PIL import Image, ImageDraw, ImageFont
 import os
+import pandas as pd
+import razorpay
 import smtplib
 from email.message import EmailMessage
 
@@ -14,70 +16,44 @@ CERT_FOLDER = "certificates"
 os.makedirs(CERT_FOLDER, exist_ok=True)
 DB_FILE = "eintrust_academy.db"
 
+PASS_MARK = 70  # Quiz pass percentage
+
+# ---------------------------
+# Razorpay Config
+# ---------------------------
+RAZORPAY_KEY_ID = "YOUR_KEY_ID"
+RAZORPAY_KEY_SECRET = "YOUR_KEY_SECRET"
+razorpay_client = razorpay.Client(auth=(RAZORPAY_KEY_ID, RAZORPAY_KEY_SECRET))
+
 # ---------------------------
 # Database Setup
 # ---------------------------
 conn = sqlite3.connect(DB_FILE, check_same_thread=False)
 c = conn.cursor()
 
-# Create tables
-c.execute("""CREATE TABLE IF NOT EXISTS students (
-    student_id INTEGER PRIMARY KEY AUTOINCREMENT,
-    name TEXT,
-    email TEXT UNIQUE,
-    password TEXT,
-    role TEXT DEFAULT 'student'
-)""")
-
-c.execute("""CREATE TABLE IF NOT EXISTS courses (
-    course_id INTEGER PRIMARY KEY,
-    title TEXT,
-    description TEXT,
-    price REAL,
-    total_lessons INTEGER
-)""")
-
-c.execute("""CREATE TABLE IF NOT EXISTS lessons (
-    lesson_id INTEGER PRIMARY KEY,
-    course_id INTEGER,
-    title TEXT,
-    content_type TEXT,
-    content_path TEXT
-)""")
-
-c.execute("""CREATE TABLE IF NOT EXISTS progress (
-    progress_id INTEGER PRIMARY KEY AUTOINCREMENT,
-    student_id INTEGER,
-    course_id INTEGER,
-    lesson_id INTEGER,
-    completed BOOLEAN
-)""")
-
-c.execute("""CREATE TABLE IF NOT EXISTS quiz_scores (
-    score_id INTEGER PRIMARY KEY AUTOINCREMENT,
-    student_id INTEGER,
-    course_id INTEGER,
-    score REAL
-)""")
-
-c.execute("""CREATE TABLE IF NOT EXISTS payments (
-    payment_id INTEGER PRIMARY KEY AUTOINCREMENT,
-    student_id INTEGER,
-    course_id INTEGER,
-    amount REAL,
-    status TEXT,
-    transaction_id TEXT
-)""")
-conn.commit()
+# ---------------------------
+# Session Defaults
+# ---------------------------
+if "user" not in st.session_state: st.session_state.user = None
+if "current_course" not in st.session_state: st.session_state.current_course = None
 
 # ---------------------------
-# Session State Defaults
+# Indian Number Format Helper
 # ---------------------------
-if "user" not in st.session_state:
-    st.session_state.user = None
+def inr_format(number):
+    if number is None: return "₹ 0"
+    return "₹ {:,}".format(int(number)).replace(",", ",")
 
-if "current_course" not in st.session_state:
-    st.session_state.current_course = None
+# ---------------------------
+# Sidebar Branding
+# ---------------------------
+with st.sidebar:
+    st.markdown(
+        f'<div style="text-align:center;"><img src="https://github.com/eintrusts/CAP/blob/main/EinTrust%20%20(2).png?raw=true" width="150"/></div>',
+        unsafe_allow_html=True
+    )
+    st.write("---")
+    st.write("© 2025 EinTrust")
 
 # ---------------------------
 # Helper Functions
@@ -94,233 +70,278 @@ def generate_certificate(student_name, course_name):
     template.save(filename)
     return filename
 
-def send_certificate_email(student_email, certificate_path):
-    msg = EmailMessage()
-    msg['Subject'] = "Your EinTrust Academy Certificate"
-    msg['From'] = "academy@eintrust.org"  # replace with your email
-    msg['To'] = student_email
-    msg.set_content("Congratulations! Find your certificate attached.")
-    with open(certificate_path, 'rb') as f:
-        msg.add_attachment(f.read(), maintype='application', subtype='octet-stream', filename="certificate.png")
-    with smtplib.SMTP('smtp.gmail.com', 587) as server:
-        server.starttls()
-        server.login("your_email@gmail.com", "app_password")  # replace with credentials
-        server.send_message(msg)
-
 def calculate_progress(student_id, course_id):
     c.execute("SELECT COUNT(*) FROM lessons WHERE course_id=?", (course_id,))
-    total_lessons = c.fetchone()[0]
+    total = c.fetchone()[0]
     c.execute("SELECT COUNT(*) FROM progress WHERE student_id=? AND course_id=? AND completed=1", (student_id, course_id))
     completed = c.fetchone()[0]
-    if total_lessons == 0:
-        return 0
-    return int((completed/total_lessons)*100)
+    return int((completed/total)*100) if total else 0
+
+def create_order(student_id, course_id, amount):
+    order = razorpay_client.order.create(dict(amount=int(amount*100), currency='INR', payment_capture=1))
+    c.execute("INSERT INTO payments (student_id, course_id, amount, status, transaction_id) VALUES (?,?,?,?,?)",
+              (student_id, course_id, amount, "pending", order['id']))
+    conn.commit()
+    return order['id'], int(amount*100)
+
+def send_certificate_email(to_email, cert_file):
+    msg = EmailMessage()
+    msg['Subject'] = "Your EinTrust Academy Certificate"
+    msg['From'] = "academy@eintrust.org"
+    msg['To'] = to_email
+    msg.set_content("Congratulations! Your course completion certificate is attached.")
+    with open(cert_file, 'rb') as f:
+        msg.add_attachment(f.read(), maintype='image', subtype='png', filename=os.path.basename(cert_file))
+    with smtplib.SMTP('smtp.gmail.com', 587) as smtp:
+        smtp.starttls()
+        smtp.login("your_email@gmail.com", "your_password")
+        smtp.send_message(msg)
 
 # ---------------------------
-# Pages
+# Admin Tabs
 # ---------------------------
-def login_signup():
+def admin_tabs():
+    tabs = st.tabs(["Dashboard","Courses","Lessons","Quizzes","Students","Payments","Revenue Chart"])
+    
+    # Dashboard
+    with tabs[0]:
+        st.subheader("Admin Dashboard")
+        c.execute("SELECT COUNT(*) FROM students"); total_students=c.fetchone()[0]
+        c.execute("SELECT COUNT(*) FROM courses"); total_courses=c.fetchone()[0]
+        c.execute("SELECT COUNT(*) FROM payments WHERE status='paid'"); total_enrollments=c.fetchone()[0]
+        c.execute("SELECT SUM(amount) FROM payments WHERE status='paid'"); total_revenue=c.fetchone()[0] or 0
+        col1,col2,col3,col4 = st.columns(4)
+        col1.metric("Total Students", total_students)
+        col2.metric("Total Courses", total_courses)
+        col3.metric("Paid Enrollments", total_enrollments)
+        col4.metric("Revenue", inr_format(total_revenue))
+    
+    # Courses
+    with tabs[1]:
+        st.subheader("Courses")
+        df_courses = pd.read_sql("SELECT * FROM courses", conn)
+        search_course = st.text_input("Search Course")
+        if search_course: df_courses = df_courses[df_courses['title'].str.contains(search_course, case=False)]
+        df_courses['price'] = df_courses['price'].apply(inr_format)
+        st.dataframe(df_courses)
+    
+    # Lessons
+    with tabs[2]:
+        st.subheader("Lessons")
+        df_lessons = pd.read_sql("SELECT l.lesson_id, c.title as course, l.title, l.content_type, l.content_path FROM lessons l JOIN courses c ON l.course_id=c.course_id", conn)
+        st.dataframe(df_lessons)
+    
+    # Quizzes
+    with tabs[3]:
+        st.subheader("Quizzes")
+        df_quiz = pd.read_sql("SELECT q.quiz_id, c.title as course, q.question, q.option1, q.option2, q.option3, q.option4, q.answer FROM quizzes q JOIN courses c ON q.course_id=c.course_id", conn)
+        st.dataframe(df_quiz)
+    
+    # Students
+    with tabs[4]:
+        st.subheader("Students")
+        df_students = pd.read_sql("SELECT * FROM students", conn)
+        search_student = st.text_input("Search Student")
+        if search_student: df_students = df_students[df_students['name'].str.contains(search_student, case=False) | df_students['email'].str.contains(search_student, case=False)]
+        st.dataframe(df_students)
+    
+    # Payments
+    with tabs[5]:
+        st.subheader("Payments")
+        df_payments = pd.read_sql("""SELECT p.payment_id, s.name as student, c.title as course, p.amount, p.status, p.transaction_id 
+                                     FROM payments p 
+                                     JOIN students s ON p.student_id=s.student_id 
+                                     JOIN courses c ON p.course_id=c.course_id""", conn)
+        df_payments['amount'] = df_payments['amount'].apply(inr_format)
+        status_filter = st.selectbox("Filter by Payment Status", ["All","paid","pending"])
+        if status_filter != "All": df_payments = df_payments[df_payments['status']==status_filter]
+        st.dataframe(df_payments)
+    
+    # Revenue Chart
+    with tabs[6]:
+        st.subheader("Revenue Analysis")
+        df_revenue = pd.read_sql("""SELECT c.title as course, SUM(p.amount) as total_revenue 
+                                    FROM payments p JOIN courses c ON p.course_id=c.course_id 
+                                    WHERE p.status='paid' GROUP BY c.title""", conn)
+        if not df_revenue.empty:
+            st.bar_chart(df_revenue.set_index("course")["total_revenue"])
+        
+        df_payments_time = pd.read_sql("""SELECT strftime('%Y-%m',date('now')) as month, SUM(amount) as revenue 
+                                         FROM payments WHERE status='paid' GROUP BY month""", conn)
+        if not df_payments_time.empty:
+            st.line_chart(df_payments_time.set_index("month")["revenue"])
+
+# ---------------------------
+# Student Dashboard / Tabs
+# ---------------------------
+def student_dashboard():
+    st.subheader("My Progress Dashboard")
+    c.execute("SELECT course_id FROM payments WHERE student_id=? AND status='paid'", (st.session_state.user["id"],))
+    enrolled_courses = [x[0] for x in c.fetchall()]
+    if enrolled_courses:
+        for cid in enrolled_courses:
+            c.execute("SELECT title, price FROM courses WHERE course_id=?", (cid,))
+            course = c.fetchone()
+            title, price = course[0], course[1]
+            progress = calculate_progress(st.session_state.user["id"], cid)
+            st.markdown(f"**{title}** - Fee: {inr_format(price)}")
+            st.progress(progress)
+    else:
+        st.info("You are not enrolled in any courses yet.")
+
+def course_timeline(course_id):
+    st.subheader("Course Timeline")
+    
+    c.execute("SELECT lesson_id, title FROM lessons WHERE course_id=? ORDER BY lesson_id", (course_id,))
+    lessons = c.fetchall()
+    
+    student_id = st.session_state.user["id"]
+    c.execute("SELECT lesson_id FROM progress WHERE student_id=? AND course_id=? AND completed=1", (student_id, course_id))
+    completed_lessons = [x[0] for x in c.fetchall()]
+    
+    next_lesson_found = False
+    for lesson in lessons:
+        lid, title = lesson
+        if lid in completed_lessons:
+            st.markdown(f"[Completed] {title}")
+        elif not next_lesson_found:
+            st.markdown(f"[Next] {title}")
+            next_lesson_found = True
+            c.execute("SELECT content_type, content_path FROM lessons WHERE lesson_id=?", (lid,))
+            content_type, content_path = c.fetchone()
+            if content_type == "text":
+                with open(content_path, "r") as f: st.write(f.read())
+            elif content_type == "video":
+                st.video(content_path)
+            elif content_type == "pdf":
+                st.download_button("Download PDF", open(content_path, "rb").read(), file_name=content_path.split("/")[-1])
+            if st.button(f"Mark '{title}' as Completed"):
+                c.execute("INSERT OR REPLACE INTO progress (student_id, course_id, lesson_id, completed) VALUES (?,?,?,1)", (student_id, course_id, lid))
+                conn.commit()
+                st.success(f"Lesson '{title}' marked as completed!")
+                st.experimental_rerun()
+        else:
+            st.markdown(f"[Locked] {title}")
+
+def student_quiz_tab():
+    st.subheader("Course Quizzes")
+    student_id = st.session_state.user["id"]
+    c.execute("SELECT course_id, title FROM courses WHERE course_id IN (SELECT course_id FROM payments WHERE student_id=? AND status='paid')", (student_id,))
+    enrolled_courses = c.fetchall()
+    
+    if not enrolled_courses:
+        st.info("You have no enrolled courses with quizzes.")
+        return
+    
+    for course in enrolled_courses:
+        course_id, course_title = course
+        st.markdown(f"### {course_title}")
+        
+        c.execute("SELECT quiz_id, question, option1, option2, option3, option4, answer FROM quizzes WHERE course_id=?", (course_id,))
+        quizzes = c.fetchall()
+        
+        if not quizzes:
+            st.write("No quizzes available for this course yet.")
+            continue
+        
+        score = 0
+        for q in quizzes:
+            quiz_id, question, opt1, opt2, opt3, opt4, answer = q
+            user_answer = st.radio(question, [opt1, opt2, opt3, opt4], key=f"quiz_{quiz_id}")
+            if user_answer == answer:
+                score += 1
+        
+        total = len(quizzes)
+        if st.button(f"Submit Quiz for {course_title}"):
+            percentage = (score / total) * 100
+            st.write(f"Your Score: {score}/{total} ({percentage:.2f}%)")
+            
+            if percentage >= PASS_MARK:
+                st.success("Congratulations! You passed the course.")
+                
+                # Check if certificate already exists
+                c.execute("SELECT cert_file FROM certificates WHERE student_id=? AND course_id=?", (student_id, course_id))
+                existing = c.fetchone()
+                
+                if existing:
+                    st.info("Certificate already generated.")
+                    st.download_button("Download Certificate", open(existing[0], "rb").read(), file_name=existing[0].split("/")[-1])
+                else:
+                    cert_file = generate_certificate(st.session_state.user["name"], course_title)
+                    c.execute("INSERT INTO certificates (student_id, course_id, cert_file) VALUES (?,?,?)",
+                              (student_id, course_id, cert_file))
+                    conn.commit()
+                    st.success("Certificate generated automatically!")
+                    st.download_button("Download Certificate", open(cert_file, "rb").read(), file_name=cert_file.split("/")[-1])
+                    # Optionally, send via email
+                    # send_certificate_email(st.session_state.user["email"], cert_file)
+            else:
+                st.warning(f"Score below passing mark ({PASS_MARK}%). Please try again.")
+
+def student_tabs():
+    tabs = st.tabs(["Course Catalog","Timeline Lessons","Quiz","Certificate","Dashboard"])
+    
+    # Course Catalog tab
+    with tabs[0]:
+        st.subheader("Course Catalog")
+        df_courses = pd.read_sql("SELECT * FROM courses", conn)
+        df_courses['price'] = df_courses['price'].apply(inr_format)
+        for index, row in df_courses.iterrows():
+            st.markdown(f"**{row['title']}** - {row['price']}")
+    
+    # Timeline Lessons tab
+    with tabs[1]:
+        c.execute("SELECT course_id, title FROM courses WHERE course_id IN (SELECT course_id FROM payments WHERE student_id=? AND status='paid')", (st.session_state.user["id"],))
+        enrolled_courses = c.fetchall()
+        if enrolled_courses:
+            for course in enrolled_courses:
+                course_id, course_title = course
+                st.markdown(f"### {course_title}")
+                course_timeline(course_id)
+        else:
+            st.info("No enrolled courses to show timeline.")
+    
+    # Quiz Tab
+    with tabs[2]:
+        student_quiz_tab()
+    
+    # Certificate Tab
+    with tabs[3]:
+        st.subheader("My Certificates")
+        student_id = st.session_state.user["id"]
+        c.execute("SELECT course_id, cert_file FROM certificates WHERE student_id=?", (student_id,))
+        certs = c.fetchall()
+        if certs:
+            for course_id, cert_file in certs:
+                c.execute("SELECT title FROM courses WHERE course_id=?", (course_id,))
+                title = c.fetchone()[0]
+                st.markdown(f"**{title}**")
+                st.download_button("Download Certificate", open(cert_file, "rb").read(), file_name=cert_file.split("/")[-1])
+        else:
+            st.info("No certificates available yet.")
+    
+    # Dashboard Tab
+    with tabs[4]:
+        student_dashboard()
+
+# ---------------------------
+# Login / Signup
+# ---------------------------
+if st.session_state.user is None:
     st.title("EinTrust Academy Login / Signup")
     with st.form("login_form"):
         name = st.text_input("Name")
         email = st.text_input("Email")
         password = st.text_input("Password", type="password")
-        role = st.radio("Role", ["student", "admin"])
+        role = st.radio("Role", ["student","admin"])
         submitted = st.form_submit_button("Signup / Login")
         if submitted:
-            c.execute("SELECT * FROM students WHERE email=? AND password=?", (email,password))
-            user = c.fetchone()
-            if user:
-                st.session_state.user = {"id": user[0], "name": user[1], "email": user[2], "role": user[4]}
-                st.success(f"Welcome {user[1]}!")
-            else:
-                try:
-                    c.execute("INSERT INTO students (name,email,password,role) VALUES (?,?,?,?)",
-                              (name,email,password,role))
-                    conn.commit()
-                    st.success("Signup successful! Please login again.")
-                except sqlite3.IntegrityError:
-                    st.error("Email already registered. Try logging in.")
-
-def course_catalog():
-    st.title("Course Catalog")
-    c.execute("SELECT * FROM courses")
-    course_list = c.fetchall()
-    for course in course_list:
-        st.subheader(course[1])
-        st.write(course[2])
-        st.write(f"Lessons: {course[4]} | Price: ₹{course[3]}")
-        progress = calculate_progress(st.session_state.user["id"], course[0])
-        st.progress(progress)
-        c.execute("SELECT * FROM payments WHERE student_id=? AND course_id=? AND status='paid'", 
-                  (st.session_state.user["id"], course[0]))
-        payment_done = c.fetchone()
-        if payment_done or course[3]==0:
-            if st.button(f"Access {course[1]}", key=f"access_{course[0]}"):
-                st.session_state.current_course = course[0]
-                st.session_state.page = "Course"
-        else:
-            if st.button(f"Enroll / Pay ₹{course[3]}", key=f"pay_{course[0]}"):
-                c.execute("INSERT INTO payments (student_id,course_id,amount,status,transaction_id) VALUES (?,?,?,?,?)", 
-                          (st.session_state.user["id"], course[0], course[3], "paid", "TXN123456"))
-                conn.commit()
-                st.success("Payment successful! Access your course now.")
-
-def course_page():
-    course_id = st.session_state.current_course
-    c.execute("SELECT * FROM courses WHERE course_id=?", (course_id,))
-    course = c.fetchone()
-    st.title(course[1])
-    
-    c.execute("SELECT * FROM lessons WHERE course_id=?", (course_id,))
-    lessons_list = c.fetchall()
-    
-    for lesson in lessons_list:
-        st.subheader(lesson[2])
-        if lesson[3]=="text":
-            st.write(lesson[4])
-        elif lesson[3]=="video":
-            st.video(lesson[4])
-        elif lesson[3]=="pdf":
-            st.download_button("Download PDF", lesson[4])
-        # Mark complete
-        c.execute("SELECT * FROM progress WHERE student_id=? AND course_id=? AND lesson_id=?", 
-                  (st.session_state.user["id"], course_id, lesson[0]))
-        done = c.fetchone()
-        if done:
-            st.success("Completed ✅")
-        else:
-            if st.button(f"Mark '{lesson[2]}' Complete", key=f"complete_{lesson[0]}"):
-                c.execute("INSERT INTO progress (student_id,course_id,lesson_id,completed) VALUES (?,?,?,?)",
-                          (st.session_state.user["id"], course_id, lesson[0], 1))
-                conn.commit()
-                st.experimental_rerun()
-    
-    st.progress(calculate_progress(st.session_state.user["id"], course_id))
-    if calculate_progress(st.session_state.user["id"], course_id)==100:
-        if st.button("Take Quiz"):
-            st.session_state.page = "Quiz"
-
-def quiz_page():
-    course_id = st.session_state.current_course
-    st.title("Course Quiz")
-    questions = [
-        {"q":"What is sustainability?", "options":["Option A","Option B","Option C"], "answer":"Option A"},
-        {"q":"Which is NOT sustainable?", "options":["Reduce","Waste","Recycle"], "answer":"Waste"}
-    ]
-    score = 0
-    for i,q in enumerate(questions):
-        ans = st.radio(q["q"], q["options"], key=f"q{i}")
-        if st.button(f"Submit Q{i}", key=f"submit_{i}"):
-            if ans==q["answer"]:
-                st.success("Correct ✅")
-                score+=1
-            else:
-                st.error(f"Wrong ❌. Correct: {q['answer']}")
-    c.execute("INSERT INTO quiz_scores (student_id,course_id,score) VALUES (?,?,?)",
-              (st.session_state.user["id"], course_id, score))
-    conn.commit()
-    st.write(f"Your score: {score}/{len(questions)}")
-    if score >= len(questions)*0.7:
-        st.success("Passed! Certificate unlocked.")
-        cert_file = generate_certificate(st.session_state.user["name"], c.execute("SELECT title FROM courses WHERE course_id=?", (course_id,)).fetchone()[0])
-        st.image(cert_file)
-        st.download_button("Download Certificate", cert_file, file_name=os.path.basename(cert_file))
-        # send_certificate_email(st.session_state.user["email"], cert_file)
-    else:
-        st.warning("You need at least 70% to pass.")
-
-# ---------------------------
-# Admin Panel
-# ---------------------------
-def admin_panel():
-    st.title("Admin Panel")
-    menu = ["Courses","Lessons","Students","Payments"]
-    choice = st.sidebar.selectbox("Select Section", menu)
-    
-    if choice=="Courses":
-        st.subheader("Manage Courses")
-        c.execute("SELECT * FROM courses")
-        courses_list = c.fetchall()
-        for course in courses_list:
-            st.write(f"{course[0]} | {course[1]} | ₹{course[3]}")
-            if st.button(f"Delete {course[1]}", key=f"del_course_{course[0]}"):
-                c.execute("DELETE FROM courses WHERE course_id=?", (course[0],))
-                conn.commit()
-                st.success(f"Deleted {course[1]}")
-        st.markdown("---")
-        st.subheader("Add Course")
-        title = st.text_input("Course Title", key="add_course_title")
-        desc = st.text_area("Description")
-        price = st.number_input("Price", min_value=0)
-        total_lessons = st.number_input("Total Lessons", min_value=1)
-        if st.button("Add Course"):
-            c.execute("INSERT INTO courses (title,description,price,total_lessons) VALUES (?,?,?,?)", (title,desc,price,total_lessons))
-            conn.commit()
-            st.success("Course added")
-
-    elif choice=="Lessons":
-        st.subheader("Manage Lessons")
-        c.execute("SELECT * FROM courses")
-        courses_list = c.fetchall()
-        course_name = st.selectbox("Select Course", [c[1] for c in courses_list])
-        course_id = [c[0] for c in courses_list if c[1]==course_name][0]
-        c.execute("SELECT * FROM lessons WHERE course_id=?", (course_id,))
-        lessons_list = c.fetchall()
-        for lesson in lessons_list:
-            st.write(f"{lesson[0]} | {lesson[2]} | {lesson[3]}")
-            if st.button(f"Delete {lesson[2]}", key=f"del_lesson_{lesson[0]}"):
-                c.execute("DELETE FROM lessons WHERE lesson_id=?", (lesson[0],))
-                conn.commit()
-                st.success(f"Deleted {lesson[2]}")
-        st.markdown("---")
-        st.subheader("Add Lesson")
-        l_title = st.text_input("Lesson Title", key="add_lesson_title")
-        l_type = st.selectbox("Content Type", ["text","video","pdf"])
-        l_content = st.text_area("Content / URL / Path")
-        if st.button("Add Lesson"):
-            c.execute("INSERT INTO lessons (course_id,title,content_type,content_path) VALUES (?,?,?,?)",
-                      (course_id,l_title,l_type,l_content))
-            conn.commit()
-            st.success("Lesson added")
-
-    elif choice=="Students":
-        st.subheader("Students")
-        c.execute("SELECT * FROM students")
-        students = c.fetchall()
-        for s in students:
-            st.write(f"{s[0]} | {s[1]} | {s[2]} | Role: {s[4]}")
-
-    elif choice=="Payments":
-        st.subheader("Payments")
-        c.execute("SELECT p.payment_id,s.name,c.title,p.amount,p.status FROM payments p "
-                  "JOIN students s ON p.student_id=s.student_id "
-                  "JOIN courses c ON p.course_id=c.course_id")
-        payments = c.fetchall()
-        for p in payments:
-            st.write(f"{p[0]} | {p[1]} | {p[2]} | ₹{p[3]} | {p[4]}")
-
-# ---------------------------
-# Main App
-# ---------------------------
-if st.session_state.user is None:
-    login_signup()
+            c.execute("SELECT * FROM students WHERE email=? AND password=?", (email,password)); user=c.fetchone()
+            if user: st.session_state.user={"id":user[0],"name":user[1],"email":user[2],"role":user[4]}; st.success(f"Welcome back {user[1]}!")
+            else: 
+                try: c.execute("INSERT INTO students (name,email,password,role) VALUES (?,?,?,?)",(name,email,password,role)); conn.commit(); st.success("Signup complete! Please login.")
+                except: st.error("Email exists. Try login.")
 else:
-    if st.session_state.user["role"]=="admin":
-        admin_panel()
-    else:
-        st.sidebar.title("Navigation")
-        page = st.sidebar.radio("Go to:", ["Course Catalog","Course","Quiz"])
-        st.session_state.page = page
-        if page=="Course Catalog":
-            course_catalog()
-        elif page=="Course":
-            if st.session_state.current_course:
-                course_page()
-            else:
-                st.write("Select a course from catalog first.")
-        elif page=="Quiz":
-            if st.session_state.current_course:
-                quiz_page()
-            else:
-                st.write("Complete lessons first to access quiz.")
+    st.success(f"Welcome {st.session_state.user['name']}!")
+    if st.session_state.user["role"]=="admin": admin_tabs()
+    else: student_tabs()
