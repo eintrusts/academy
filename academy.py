@@ -1,256 +1,190 @@
 import streamlit as st
 import sqlite3
 import re
+from PIL import Image
+import io
+import base64
 
-# -----------------------------
-# CONFIG & THEME
-# -----------------------------
+# ---------------------------
+# DB Setup
+# ---------------------------
+conn = sqlite3.connect("academy.db", check_same_thread=False)
+c = conn.cursor()
+
+# Courses table
+c.execute('''CREATE TABLE IF NOT EXISTS courses (
+    course_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    title TEXT,
+    subtitle TEXT,
+    description TEXT,
+    price REAL
+)''')
+
+# Students table
+c.execute('''CREATE TABLE IF NOT EXISTS students (
+    student_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    full_name TEXT,
+    email TEXT UNIQUE,
+    password TEXT,
+    gender TEXT,
+    profession TEXT,
+    institution TEXT,
+    profile_picture BLOB
+)''')
+
+conn.commit()
+
+# ---------------------------
+# Utility Functions
+# ---------------------------
+def is_valid_email(email):
+    return re.match(r"[^@]+@[^@]+\.[^@]+", email)
+
+def is_valid_password(password):
+    return (len(password) >= 8 and
+            re.search(r"[A-Z]", password) and
+            re.search(r"[0-9]", password) and
+            re.search(r"[!@#$%^&*(),.?\":{}|<>]", password))
+
+def convert_image_to_bytes(uploaded_file):
+    if uploaded_file is not None:
+        img = Image.open(uploaded_file)
+        buf = io.BytesIO()
+        img.save(buf, format="PNG")
+        return buf.getvalue()
+    return None
+
+def get_courses():
+    return c.execute("SELECT * FROM courses ORDER BY course_id DESC").fetchall()
+
+def add_student(full_name, email, password, gender, profession, institution, profile_picture):
+    try:
+        c.execute("INSERT INTO students (full_name,email,password,gender,profession,institution,profile_picture) VALUES (?,?,?,?,?,?,?)",
+                  (full_name, email, password, gender, profession, institution, profile_picture))
+        conn.commit()
+        return True
+    except sqlite3.IntegrityError:
+        return False
+
+def authenticate_student(email, password):
+    student = c.execute("SELECT * FROM students WHERE email=? AND password=?", (email, password)).fetchone()
+    return student
+
+# ---------------------------
+# Page Config
+# ---------------------------
 st.set_page_config(page_title="EinTrust Academy", layout="wide")
 
+# Custom CSS
 st.markdown("""
     <style>
-    body {background-color: #121212; color: #ffffff;}
-    .stTabs [role="tablist"] button {background-color: #1E1E1E; color: #ccc; border-radius: 10px; font-weight:500;}
-    .stTabs [role="tablist"] button[aria-selected="true"] {background-color: #2E2E2E; color: #fff;}
-    .stButton>button {background-color:#3a3a3a; color:#fff; border-radius:6px; padding:8px 20px;}
+        body {background-color: #0e1117; color: #fafafa;}
+        .stTabs [role="tablist"] {justify-content: center;}
+        .stTabs [role="tab"] {font-size: 18px; padding: 12px;}
+        .course-card {
+            background: #1e1e1e;
+            border-radius: 12px;
+            padding: 16px;
+            margin: 12px 0;
+            box-shadow: 0px 4px 10px rgba(0,0,0,0.4);
+        }
+        .course-title {font-size: 22px; font-weight: bold;}
+        .course-subtitle {font-size: 16px; color: #cccccc;}
+        .course-desc {font-size: 14px; color: #bbbbbb;}
+        .enroll-btn {
+            background: #4CAF50;
+            color: white;
+            padding: 8px 16px;
+            border-radius: 6px;
+            text-align: center;
+            cursor: pointer;
+        }
+        .enroll-btn:hover {background: #45a049;}
     </style>
 """, unsafe_allow_html=True)
 
-# Logo
-st.image("https://github.com/eintrusts/CAP/raw/main/EinTrust%20%20(2).png", width=160)
-
-# -----------------------------
-# DATABASE SETUP
-# -----------------------------
-def init_db():
-    conn = sqlite3.connect("academy.db")
-    c = conn.cursor()
-
-    # Courses
-    c.execute("""CREATE TABLE IF NOT EXISTS courses (
-        course_id INTEGER PRIMARY KEY AUTOINCREMENT,
-        title TEXT,
-        subtitle TEXT,
-        description TEXT,
-        price REAL,
-        is_paid INTEGER
-    )""")
-
-    # Users (with extended fields)
-    c.execute("""CREATE TABLE IF NOT EXISTS users (
-        user_id INTEGER PRIMARY KEY AUTOINCREMENT,
-        profile_pic BLOB,
-        name TEXT,
-        email TEXT UNIQUE,
-        password TEXT,
-        gender TEXT,
-        profession TEXT,
-        institution TEXT
-    )""")
-
-    # Enrollments
-    c.execute("""CREATE TABLE IF NOT EXISTS enrollments (
-        enroll_id INTEGER PRIMARY KEY AUTOINCREMENT,
-        user_id INTEGER,
-        course_id INTEGER,
-        progress INTEGER DEFAULT 0,
-        FOREIGN KEY(user_id) REFERENCES users(user_id),
-        FOREIGN KEY(course_id) REFERENCES courses(course_id)
-    )""")
-
-    conn.commit()
-    return conn, c
-
-conn, c = init_db()
-
-# -----------------------------
-# HELPERS
-# -----------------------------
-def validate_email(email: str) -> bool:
-    return re.match(r"[^@]+@[^@]+\.[^@]+", email) is not None
-
-def validate_password(password: str) -> bool:
-    return (
-        len(password) >= 8
-        and re.search(r"[A-Z]", password)
-        and re.search(r"[0-9]", password)
-        and re.search(r"[!@#$%^&*(),.?\":{}|<>]", password)
-    )
-
-# -----------------------------
+# ---------------------------
 # PAGES
-# -----------------------------
-def page_home():
-    st.subheader("Available Courses")
+# ---------------------------
 
-    courses = c.execute("SELECT * FROM courses ORDER BY course_id DESC").fetchall()
+def page_home():
+    st.header("📚 Available Courses")
+    courses = get_courses()
     if not courses:
         st.info("No courses available yet.")
     else:
         for course in courses:
-            course_id, title, subtitle, description, price, is_paid = course
             with st.container():
-                st.write(f"### {title}")
-                st.write(subtitle)
-                st.write(description)
-                if is_paid:
-                    st.write(f"Paid Course – ₹{price:,.2f}")
-                else:
-                    st.write("Free Course")
-
-                if st.button(f"Enroll in {title}", key=f"enroll_home_{course_id}"):
-                    st.session_state["selected_course"] = course_id
-                    if "user" not in st.session_state:
-                        st.session_state["page"] = "signup"
-                    else:
-                        if is_paid:
-                            st.session_state["page"] = "payment"
-                        else:
-                            st.session_state["page"] = "lesson"
+                st.markdown(f"""
+                <div class="course-card">
+                    <div class="course-title">{course[1]}</div>
+                    <div class="course-subtitle">{course[2]}</div>
+                    <div class="course-desc">{course[3][:150]}...</div>
+                    <p><b>Price:</b> {"Free" if course[4]==0 else f"₹{course[4]:,.0f}"}</p>
+                </div>
+                """, unsafe_allow_html=True)
+                if st.button(f"Enroll in {course[1]}", key=f"enroll_{course[0]}"):
+                    st.session_state["page"] = "signup"
 
 def page_signup():
-    st.subheader("Create Profile")
-
-    with st.form("signup_form", clear_on_submit=False):
-        profile_pic = st.file_uploader("Upload Profile Picture", type=["jpg","jpeg","png"])
-        name = st.text_input("Full Name")
+    st.header("📝 Create Profile")
+    with st.form("signup_form"):
+        profile_picture = st.file_uploader("Profile Picture", type=["png","jpg","jpeg"])
+        full_name = st.text_input("Full Name")
         email = st.text_input("Email ID")
-        password = st.text_input("Password", type="password", help="At least 8 chars, 1 uppercase, 1 number, 1 special char")
-        gender = st.selectbox("Gender", ["Select","Male","Female","Other"])
+        password = st.text_input("Password", type="password", help="Min 8 chars, 1 uppercase, 1 number, 1 special char")
+        gender = st.selectbox("Gender", ["Male","Female","Other"])
         profession = st.text_input("Profession")
         institution = st.text_input("Institution")
-
-        submitted = st.form_submit_button("Sign Up")
+        submitted = st.form_submit_button("Submit")
 
         if submitted:
-            if not validate_email(email):
-                st.error("Please enter a valid email address.")
-                return
-            if not validate_password(password):
-                st.error("Password must be at least 8 characters long and contain one uppercase, one number, and one special character.")
-                return
-            if gender == "Select":
-                st.error("Please select a valid gender.")
-                return
-
-            pic_bytes = None
-            if profile_pic:
-                pic_bytes = profile_pic.read()
-
-            try:
-                c.execute("""INSERT INTO users (profile_pic,name,email,password,gender,profession,institution) 
-                             VALUES (?,?,?,?,?,?,?)""",
-                          (pic_bytes, name, email, password, gender, profession, institution))
-                conn.commit()
-                st.success("Profile created successfully! Please log in.")
-                st.session_state["page"] = "login"
-            except sqlite3.IntegrityError:
-                st.error("Email already exists. Please use another.")
+            if not is_valid_email(email):
+                st.error("❌ Enter a valid email address.")
+            elif not is_valid_password(password):
+                st.error("❌ Password does not meet security requirements.")
+            else:
+                img_bytes = convert_image_to_bytes(profile_picture)
+                success = add_student(full_name, email, password, gender, profession, institution, img_bytes)
+                if success:
+                    st.success("✅ Profile created successfully! Please login.")
+                    st.session_state["page"] = "login"
+                else:
+                    st.error("❌ Email already registered. Please login.")
 
 def page_login():
-    st.subheader("Login")
-    with st.form("login_form"):
-        email = st.text_input("Email")
-        password = st.text_input("Password", type="password")
-        submitted = st.form_submit_button("Login")
-        if submitted:
-            user = c.execute("SELECT * FROM users WHERE email=? AND password=?", (email, password)).fetchone()
-            if user:
-                st.session_state["user"] = user
-                st.success("Login successful!")
-                st.session_state["page"] = "home"
-            else:
-                st.error("Invalid credentials.")
-
-def page_lesson():
-    st.subheader("Course Lessons")
-    course_id = st.session_state.get("selected_course")
-    if not course_id:
-        st.warning("No course selected.")
-        return
-
-    course = c.execute("SELECT * FROM courses WHERE course_id=?", (course_id,)).fetchone()
-    if not course:
-        st.error("Course not found.")
-        return
-
-    st.write(f"### {course[1]}")
-    st.write(course[3])
-    st.info("Lessons will be displayed here (Demo).")
-
-    if st.button("Mark Course Complete", key=f"complete_{course_id}"):
-        user_id = st.session_state["user"][0]
-        c.execute("UPDATE enrollments SET progress=100 WHERE user_id=? AND course_id=?", (user_id, course_id))
-        conn.commit()
-        st.success("Course Completed! Certificate will be generated automatically.")
-
-def page_payment():
-    st.subheader("Payment Gateway (Demo)")
-    st.warning("Payment integration is in demo mode.")
-    if st.button("Simulate Payment Success", key="pay_success"):
-        user_id = st.session_state["user"][0]
-        course_id = st.session_state["selected_course"]
-        c.execute("INSERT INTO enrollments (user_id,course_id,progress) VALUES (?,?,0)", (user_id, course_id))
-        conn.commit()
-        st.success("Payment successful! Redirecting to lessons...")
-        st.session_state["page"] = "lesson"
-
-def page_admin():
-    st.subheader("Admin Dashboard")
-    admin_pass = st.text_input("Enter Admin Password", type="password")
-    if st.button("Login as Admin"):
-        if admin_pass == "admin123":  # Demo password
-            st.session_state["is_admin"] = True
+    st.header("🔑 Student Login")
+    email = st.text_input("Email ID", key="login_email")
+    password = st.text_input("Password", type="password", key="login_pass")
+    if st.button("Login"):
+        student = authenticate_student(email, password)
+        if student:
+            st.success("✅ Login successful!")
+            st.session_state["student"] = student
+            st.session_state["page"] = "dashboard"
         else:
-            st.error("Invalid password")
+            st.error("❌ Invalid credentials.")
 
-    if st.session_state.get("is_admin"):
-        st.success("Welcome, Admin")
+def page_dashboard():
+    st.header("🎓 Student Dashboard")
+    student = st.session_state.get("student")
+    if student:
+        st.write(f"Welcome, {student[1]}!")
+        st.write("Your enrolled courses will appear here.")
+    else:
+        st.warning("Please login first.")
 
-        st.write("### Manage Courses")
-        with st.form("add_course_form"):
-            title = st.text_input("Course Title")
-            subtitle = st.text_input("Subtitle")
-            desc = st.text_area("Description")
-            price = st.number_input("Price (₹)", min_value=0.0)
-            is_paid = st.checkbox("Paid Course?")
-            submitted = st.form_submit_button("Add Course")
-            if submitted:
-                c.execute("INSERT INTO courses (title,subtitle,description,price,is_paid) VALUES (?,?,?,?,?)",
-                          (title, subtitle, desc, price, 1 if is_paid else 0))
-                conn.commit()
-                st.success("Course added successfully!")
+# ---------------------------
+# MAIN NAVIGATION
+# ---------------------------
+tabs = st.tabs(["Home", "Signup", "Login"])
 
-        st.write("### All Students")
-        students = c.execute("SELECT name,email,profession,institution FROM users").fetchall()
-        for s in students:
-            st.write(f"{s[0]} - {s[1]} | {s[2]} @ {s[3]}")
-
-# -----------------------------
-# NAVIGATION
-# -----------------------------
-if "page" not in st.session_state:
-    st.session_state["page"] = "home"
-
-menu = st.tabs(["Home", "Signup", "Login", "Admin"])
-
-with menu[0]:
-    if st.session_state["page"] == "home":
-        page_home()
-
-with menu[1]:
-    if st.session_state["page"] == "signup":
-        page_signup()
-
-with menu[2]:
-    if st.session_state["page"] == "login":
+with tabs[0]:
+    page_home()
+with tabs[1]:
+    page_signup()
+with tabs[2]:
+    if "page" in st.session_state and st.session_state["page"]=="dashboard":
+        page_dashboard()
+    else:
         page_login()
-
-with menu[3]:
-    page_admin()
-
-# Dynamic navigation
-if st.session_state["page"] == "lesson":
-    page_lesson()
-elif st.session_state["page"] == "payment":
-    page_payment()
