@@ -2,15 +2,15 @@ import streamlit as st
 import sqlite3
 import hashlib
 
-# ----------------------------
+# -----------------------------
 # DATABASE SETUP
-# ----------------------------
+# -----------------------------
 conn = sqlite3.connect("eintrust_academy.db", check_same_thread=False)
 c = conn.cursor()
 
-# ----------------------------
+# -----------------------------
 # TABLES
-# ----------------------------
+# -----------------------------
 c.execute("""
 CREATE TABLE IF NOT EXISTS students (
     student_id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -61,9 +61,9 @@ CREATE TABLE IF NOT EXISTS enrollments (
 """)
 conn.commit()
 
-# ----------------------------
+# -----------------------------
 # DUMMY DATA INSERTION (SAFE)
-# ----------------------------
+# -----------------------------
 def insert_dummy_data():
     courses = [
         ("Sustainability Basics", "Intro to Sustainability",
@@ -73,14 +73,11 @@ def insert_dummy_data():
         ("ESG & Corporate Responsibility", "Environmental, Social & Governance",
          "Dive into ESG concepts, reporting standards, and real-world case studies.", 799.0, "ESG", "https://via.placeholder.com/350x150")
     ]
-
     for title, subtitle, desc, price, cat, banner in courses:
-        exists = c.execute("SELECT 1 FROM courses WHERE title=?", (title,)).fetchone()
-        if not exists:
-            c.execute("""
-                INSERT INTO courses (title, subtitle, description, price, category, banner_path)
-                VALUES (?,?,?,?,?,?)
-            """, (title, subtitle, desc, float(price), cat, banner))
+        c.execute("""
+            INSERT OR IGNORE INTO courses (title, subtitle, description, price, category, banner_path)
+            VALUES (?,?,?,?,?,?)
+        """, (title, subtitle, desc, price, cat, banner))
     conn.commit()
 
     lessons = {
@@ -94,27 +91,25 @@ def insert_dummy_data():
         if course_row:
             course_id = course_row[0]
             for title, ctype, path in les:
-                exists = c.execute("SELECT 1 FROM lessons WHERE course_id=? AND title=?", (course_id, title)).fetchone()
-                if not exists:
-                    c.execute("""
-                        INSERT INTO lessons (course_id,title,content_type,content_path)
-                        VALUES (?,?,?,?)
-                    """, (course_id, title, ctype, path))
+                c.execute("""
+                    INSERT OR IGNORE INTO lessons (course_id,title,content_type,content_path)
+                    VALUES (?,?,?,?)
+                """, (course_id, title, ctype, path))
     conn.commit()
 
 insert_dummy_data()
 
-# ----------------------------
+# -----------------------------
 # SESSION STATE
-# ----------------------------
+# -----------------------------
 if 'student_id' not in st.session_state: st.session_state.student_id = None
 if 'admin_logged_in' not in st.session_state: st.session_state.admin_logged_in = False
 if 'page' not in st.session_state: st.session_state.page = "home"
 if 'enrolled_course' not in st.session_state: st.session_state.enrolled_course = None
 
-# ----------------------------
+# -----------------------------
 # STYLING
-# ----------------------------
+# -----------------------------
 st.set_page_config(page_title="EinTrust Academy", layout="wide", page_icon="🌱")
 st.markdown("""
 <style>
@@ -132,15 +127,15 @@ a:hover {color: #009acd;}
 </style>
 """, unsafe_allow_html=True)
 
-# ----------------------------
+# -----------------------------
 # UTILITIES
-# ----------------------------
+# -----------------------------
 def hash_password(pw): return hashlib.sha256(pw.encode()).hexdigest()
 def verify_password(pw, hashed): return hash_password(pw) == hashed
 
-# ----------------------------
+# -----------------------------
 # TOP NAVIGATION
-# ----------------------------
+# -----------------------------
 def top_nav():
     try:
         c.execute("SELECT DISTINCT category FROM courses")
@@ -166,9 +161,9 @@ def top_nav():
         if st.button("Admin", key="admin_btn"): st.session_state.page = "admin_login"
     return search_query, category_filter
 
-# ----------------------------
+# -----------------------------
 # DISPLAY COURSES
-# ----------------------------
+# -----------------------------
 def display_courses(search_query="", category_filter="All"):
     query = "SELECT course_id, title, subtitle, description, price, category, banner_path FROM courses"
     params = []
@@ -190,17 +185,17 @@ def display_courses(search_query="", category_filter="All"):
         </div>
         """, unsafe_allow_html=True)
 
-# ----------------------------
+# -----------------------------
 # HOME PAGE
-# ----------------------------
+# -----------------------------
 def home_page():
     search_query, category_filter = top_nav()
     display_courses(search_query, category_filter)
     st.markdown("<div style='text-align:center; padding:10px;'>© 2025 EinTrust Academy</div>", unsafe_allow_html=True)
 
-# ----------------------------
+# -----------------------------
 # MAIN
-# ----------------------------
+# -----------------------------
 def main():
     if st.session_state.page == "home": home_page()
 
