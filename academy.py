@@ -122,7 +122,8 @@ st.markdown("""
         .stApp {background-color: #0d0f12; color: #e0e0e0;}
         .stTextInput > div > div > input,
         .stSelectbox > div > div > select,
-        .stTextArea > div > textarea {
+        .stTextArea > div > textarea,
+        .stNumberInput > div > input {
             background-color: #1e1e1e; color: #f5f5f5; border: 1px solid #333333; border-radius: 6px;
         }
         .unique-btn button {background-color: #4CAF50 !important; color: white !important; border-radius: 8px !important; border: none !important; padding: 10px 20px !important; font-weight: bold !important;}
@@ -131,6 +132,8 @@ st.markdown("""
         .course-title {font-size: 22px; font-weight: bold; color: #f0f0f0;}
         .course-subtitle {font-size: 16px; color: #b0b0b0;}
         .course-desc {font-size: 14px; color: #cccccc;}
+        .admin-toggle button {background-color: #2e2e2e !important; color: #ffffff !important; border-radius: 8px !important; padding: 10px 16px !important; margin-right: 10px;}
+        .admin-toggle button:hover {background-color: #4CAF50 !important; color: white !important;}
     </style>
 """, unsafe_allow_html=True)
 
@@ -164,7 +167,7 @@ def display_courses_grid(courses, enroll_option=False, student_id=None, show_les
                         st.write(f"- {l[2]} ({l[4]})")
 
 # ---------------------------
-# PAGES
+# Pages
 # ---------------------------
 def page_home():
     st.image("https://github.com/eintrusts/CAP/blob/main/EinTrust%20%20(2).png?raw=true", width=180)
@@ -268,9 +271,18 @@ def page_admin_dashboard():
     st.image("https://github.com/eintrusts/CAP/blob/main/EinTrust%20%20(2).png?raw=true", width=180)
     st.header("Admin Dashboard")
 
-    admin_page = st.radio("Navigate", ["Dashboard","All Students","All Courses","Logout"], horizontal=True)
+    # Home-style toggle buttons
+    admin_pages = ["Dashboard", "Students", "Courses", "Logout"]
+    if "admin_page" not in st.session_state:
+        st.session_state["admin_page"] = "Dashboard"
+    cols = st.columns(len(admin_pages))
+    for idx, p in enumerate(admin_pages):
+        if cols[idx].button(p):
+            st.session_state["admin_page"] = p
 
-    if admin_page == "Dashboard":
+    page = st.session_state["admin_page"]
+
+    if page == "Dashboard":
         total_students = c.execute("SELECT COUNT(*) FROM students").fetchone()[0]
         total_courses = c.execute("SELECT COUNT(*) FROM courses").fetchone()[0]
         total_lessons = c.execute("SELECT COUNT(*) FROM lessons").fetchone()[0]
@@ -279,35 +291,35 @@ def page_admin_dashboard():
         st.write(f"**Total Courses:** {total_courses}")
         st.write(f"**Total Lessons:** {total_lessons}")
 
-    elif admin_page == "All Students":
+    elif page == "Students":
         st.subheader("All Students Data")
         students = c.execute("SELECT student_id, full_name, email, gender, profession, institution FROM students").fetchall()
         for s in students:
             st.write(f"ID: {s[0]}, Name: {s[1]}, Email: {s[2]}, Gender: {s[3]}, Profession: {s[4]}, Institution: {s[5]}")
 
-    elif admin_page == "All Courses":
-        st.subheader("Add Course")
+    elif page == "Courses":
+        st.subheader("All Courses and Add Course/Lesson")
+        courses = get_courses()
+        st.write("### Add Course")
         with st.form("add_course_form"):
-            course_title = st.text_input("Course Title")
-            course_subtitle = st.text_input("Course Subtitle")
-            course_description = st.text_area("Course Description")
-            course_type = st.selectbox("Course Type", ["Free","Paid"])
-            course_price = 0
-            if course_type=="Paid":
-                course_price = st.number_input("Price (INR)", min_value=1)
+            title = st.text_input("Course Title")
+            subtitle = st.text_input("Course Subtitle")
+            description = st.text_area("Course Description")
+            price_type = st.selectbox("Course Type", ["Free","Paid"])
+            price = 0
+            if price_type=="Paid":
+                price = st.number_input("Price (INR)", min_value=1)
             submit_course = st.form_submit_button("Add Course")
             if submit_course:
-                add_course(course_title, course_subtitle, course_description, course_price)
+                add_course(title, subtitle, description, price)
                 st.success("Course added successfully!")
 
-        st.write("---")
-        courses = get_courses()
         if courses:
-            st.subheader("Add Lessons to a Course")
-            course_dict = {f"{c[1]}": c[0] for c in courses}
-            selected_course_name = st.selectbox("Select Course for Lesson", list(course_dict.keys()))
+            st.write("---")
+            st.write("### Add Lessons to a Course")
+            course_dict = {c[1]: c[0] for c in courses}
+            selected_course_name = st.selectbox("Select Course", list(course_dict.keys()))
             selected_course_id = course_dict[selected_course_name]
-
             with st.form("add_lesson_form"):
                 lesson_title = st.text_input("Lesson Title")
                 lesson_description = st.text_area("Lesson Description")
@@ -324,22 +336,12 @@ def page_admin_dashboard():
                     add_lesson(selected_course_id, lesson_title, lesson_description, lesson_type, file_bytes, lesson_link)
                     st.success(f"Lesson '{lesson_title}' added to course '{selected_course_name}' successfully!")
 
-            st.write("---")
-            st.subheader("All Courses and Lessons")
-            for c in courses:
-                st.markdown(f"### {c[1]} ({'Free' if c[4]==0 else f'₹{c[4]:,.0f}'})")
-                st.write(c[3])
-                lessons = get_lessons(c[0])
-                if lessons:
-                    for l in lessons:
-                        st.write(f"- {l[2]} ({l[4]}) : {l[3]}")
-
-    elif admin_page == "Logout":
+    elif page == "Logout":
         st.session_state.clear()
         st.experimental_rerun()
 
 # ---------------------------
-# MAIN NAVIGATION
+# Main Navigation
 # ---------------------------
 if "page" not in st.session_state:
     st.session_state["page"] = "home"
