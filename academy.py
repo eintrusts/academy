@@ -1,96 +1,78 @@
 import streamlit as st
 import sqlite3
-from fpdf import FPDF
 import hashlib
+from datetime import datetime
 
-# -------------------- DB Setup --------------------
+# ------------------- DATABASE -------------------
 conn = sqlite3.connect("academy.db", check_same_thread=False)
 c = conn.cursor()
 
-# -------------------- Create Tables Safely --------------------
+# Create tables
 def create_tables():
-    # Students
-    c.execute("""
-    CREATE TABLE IF NOT EXISTS students (
-        student_id INTEGER PRIMARY KEY AUTOINCREMENT,
-        full_name TEXT NOT NULL,
-        email TEXT UNIQUE NOT NULL,
-        password TEXT NOT NULL,
-        mobile TEXT,
-        profession TEXT,
-        institution TEXT,
-        sex TEXT,
-        profile_pic TEXT
-    )
-    """)
+    c.execute("""CREATE TABLE IF NOT EXISTS students (
+                    student_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    full_name TEXT NOT NULL,
+                    email TEXT UNIQUE NOT NULL,
+                    password TEXT NOT NULL,
+                    mobile TEXT,
+                    profession TEXT,
+                    institution TEXT,
+                    sex TEXT,
+                    profile_pic TEXT
+                )""")
 
-    # Admin
-    c.execute("""
-    CREATE TABLE IF NOT EXISTS admin (
-        admin_id INTEGER PRIMARY KEY,
-        password TEXT NOT NULL
-    )
-    """)
+    c.execute("""CREATE TABLE IF NOT EXISTS admin (
+                    admin_id INTEGER PRIMARY KEY,
+                    password TEXT NOT NULL
+                )""")
 
-    # Courses
-    c.execute("""
-    CREATE TABLE IF NOT EXISTS courses (
-        course_id INTEGER PRIMARY KEY AUTOINCREMENT,
-        title TEXT,
-        subtitle TEXT,
-        description TEXT,
-        price REAL,
-        category TEXT,
-        banner_path TEXT
-    )
-    """)
+    c.execute("""CREATE TABLE IF NOT EXISTS courses (
+                    course_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    title TEXT,
+                    subtitle TEXT,
+                    description TEXT,
+                    price REAL,
+                    category TEXT,
+                    banner_path TEXT
+                )""")
 
-    # Lessons
-    c.execute("""
-    CREATE TABLE IF NOT EXISTS lessons (
-        lesson_id INTEGER PRIMARY KEY AUTOINCREMENT,
-        course_id INTEGER,
-        title TEXT,
-        content_type TEXT,
-        content_path TEXT,
-        FOREIGN KEY(course_id) REFERENCES courses(course_id)
-    )
-    """)
-
-    # Progress
-    c.execute("""
-    CREATE TABLE IF NOT EXISTS progress (
-        progress_id INTEGER PRIMARY KEY AUTOINCREMENT,
-        student_id INTEGER,
-        lesson_id INTEGER,
-        completed INTEGER DEFAULT 0,
-        FOREIGN KEY(student_id) REFERENCES students(student_id),
-        FOREIGN KEY(lesson_id) REFERENCES lessons(lesson_id)
-    )
-    """)
-
-    # Certificates
-    c.execute("""
-    CREATE TABLE IF NOT EXISTS certificates (
-        cert_id INTEGER PRIMARY KEY AUTOINCREMENT,
-        student_id INTEGER,
-        course_id INTEGER,
-        cert_file TEXT,
-        date_generated TEXT,
-        FOREIGN KEY(student_id) REFERENCES students(student_id),
-        FOREIGN KEY(course_id) REFERENCES courses(course_id)
-    )
-    """)
+    c.execute("""CREATE TABLE IF NOT EXISTS lessons (
+                    lesson_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    course_id INTEGER,
+                    title TEXT,
+                    content_type TEXT,
+                    content_path TEXT,
+                    FOREIGN KEY(course_id) REFERENCES courses(course_id)
+                )""")
+    
+    c.execute("""CREATE TABLE IF NOT EXISTS progress (
+                    progress_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    student_id INTEGER,
+                    lesson_id INTEGER,
+                    completed INTEGER DEFAULT 0,
+                    FOREIGN KEY(student_id) REFERENCES students(student_id),
+                    FOREIGN KEY(lesson_id) REFERENCES lessons(lesson_id)
+                )""")
+    
+    c.execute("""CREATE TABLE IF NOT EXISTS certificates (
+                    cert_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    student_id INTEGER,
+                    course_id INTEGER,
+                    cert_file TEXT,
+                    date_generated TEXT,
+                    FOREIGN KEY(student_id) REFERENCES students(student_id),
+                    FOREIGN KEY(course_id) REFERENCES courses(course_id)
+                )""")
     conn.commit()
 
 create_tables()
 
-# -------------------- Insert Dummy Data --------------------
+# ------------------- DUMMY DATA -------------------
 def insert_dummy_data():
-    # Admin password
-    c.execute("INSERT OR IGNORE INTO admin (admin_id, password) VALUES (1, 'admin123')")
+    # Admin default password
+    c.execute("INSERT OR IGNORE INTO admin (admin_id, password) VALUES (1, ?)", ('admin123',))
 
-    # Dummy courses
+    # Courses
     dummy_courses = [
         ("Sustainability Basics", "Intro to Sustainability", "Learn sustainability fundamentals", 499.0, "Sustainability", "https://via.placeholder.com/350x150"),
         ("Climate Change Fundamentals", "Understand Climate Change", "Explore causes & solutions", 599.0, "Climate", "https://via.placeholder.com/350x150"),
@@ -101,10 +83,10 @@ def insert_dummy_data():
             INSERT OR IGNORE INTO courses (title, subtitle, description, price, category, banner_path)
             VALUES (?,?,?,?,?,?)
         """, course)
-
+    
     conn.commit()
 
-    # Dummy lessons
+    # Lessons
     c.execute("SELECT course_id FROM courses")
     course_ids = c.fetchall()
     for course_id_tuple in course_ids:
@@ -120,8 +102,8 @@ def insert_dummy_data():
 
 insert_dummy_data()
 
-# -------------------- Streamlit Layout --------------------
-st.set_page_config(page_title="EinTrust Academy", layout="wide", initial_sidebar_state="collapsed")
+# ------------------- STREAMLIT CONFIG -------------------
+st.set_page_config(page_title="EinTrust Academy", layout="wide")
 st.markdown("""
 <style>
 body {background-color:#121212; color:white; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;}
@@ -129,18 +111,18 @@ div.stButton > button:first-child {background-color:#1E88E5; color:white; border
 </style>
 """, unsafe_allow_html=True)
 
-# -------------------- Top Nav --------------------
+# ------------------- TOP NAV -------------------
 def top_nav():
     col1, col2, col3 = st.columns([1,3,1])
     with col1:
-        st.image("https://github.com/eintrusts/CAP/blob/main/EinTrust%20%20(2).png?raw=true", width=150)
+        st.image("https://github.com/eintrusts/CAP/blob/main/EinTrust%20%20(2).png?raw=true", width=180)
     with col2:
         st.markdown("<h3 style='text-align:center;'>Browse Courses | About</h3>", unsafe_allow_html=True)
     with col3:
         if st.button("Login"):
             st.session_state['page'] = "login"
 
-# -------------------- Home Page --------------------
+# ------------------- HOME PAGE -------------------
 def home_page():
     top_nav()
     st.markdown("## Available Courses")
@@ -155,7 +137,7 @@ def home_page():
         </div>
         """, unsafe_allow_html=True)
 
-# -------------------- Run App --------------------
+# ------------------- RUN APP -------------------
 if 'page' not in st.session_state:
     st.session_state['page'] = 'home'
 
