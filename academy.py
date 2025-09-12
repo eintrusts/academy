@@ -1,5 +1,6 @@
 import streamlit as st
 import sqlite3
+import re
 
 # -----------------------------
 # CONFIG & THEME
@@ -35,12 +36,16 @@ def init_db():
         is_paid INTEGER
     )""")
 
-    # Users
+    # Users (with extended fields)
     c.execute("""CREATE TABLE IF NOT EXISTS users (
         user_id INTEGER PRIMARY KEY AUTOINCREMENT,
+        profile_pic BLOB,
         name TEXT,
         email TEXT UNIQUE,
-        password TEXT
+        password TEXT,
+        gender TEXT,
+        profession TEXT,
+        institution TEXT
     )""")
 
     # Enrollments
@@ -59,9 +64,22 @@ def init_db():
 conn, c = init_db()
 
 # -----------------------------
+# HELPERS
+# -----------------------------
+def validate_email(email: str) -> bool:
+    return re.match(r"[^@]+@[^@]+\.[^@]+", email) is not None
+
+def validate_password(password: str) -> bool:
+    return (
+        len(password) >= 8
+        and re.search(r"[A-Z]", password)
+        and re.search(r"[0-9]", password)
+        and re.search(r"[!@#$%^&*(),.?\":{}|<>]", password)
+    )
+
+# -----------------------------
 # PAGES
 # -----------------------------
-
 def page_home():
     st.subheader("Available Courses")
 
@@ -92,16 +110,39 @@ def page_home():
 
 def page_signup():
     st.subheader("Create Profile")
-    with st.form("signup_form"):
+
+    with st.form("signup_form", clear_on_submit=False):
+        profile_pic = st.file_uploader("Upload Profile Picture", type=["jpg","jpeg","png"])
         name = st.text_input("Full Name")
-        email = st.text_input("Email")
-        password = st.text_input("Password", type="password")
+        email = st.text_input("Email ID")
+        password = st.text_input("Password", type="password", help="At least 8 chars, 1 uppercase, 1 number, 1 special char")
+        gender = st.selectbox("Gender", ["Select","Male","Female","Other"])
+        profession = st.text_input("Profession")
+        institution = st.text_input("Institution")
+
         submitted = st.form_submit_button("Sign Up")
+
         if submitted:
+            if not validate_email(email):
+                st.error("Please enter a valid email address.")
+                return
+            if not validate_password(password):
+                st.error("Password must be at least 8 characters long and contain one uppercase, one number, and one special character.")
+                return
+            if gender == "Select":
+                st.error("Please select a valid gender.")
+                return
+
+            pic_bytes = None
+            if profile_pic:
+                pic_bytes = profile_pic.read()
+
             try:
-                c.execute("INSERT INTO users (name,email,password) VALUES (?,?,?)", (name, email, password))
+                c.execute("""INSERT INTO users (profile_pic,name,email,password,gender,profession,institution) 
+                             VALUES (?,?,?,?,?,?,?)""",
+                          (pic_bytes, name, email, password, gender, profession, institution))
                 conn.commit()
-                st.success("Profile created! Please log in.")
+                st.success("Profile created successfully! Please log in.")
                 st.session_state["page"] = "login"
             except sqlite3.IntegrityError:
                 st.error("Email already exists. Please use another.")
@@ -181,9 +222,9 @@ def page_admin():
                 st.success("Course added successfully!")
 
         st.write("### All Students")
-        students = c.execute("SELECT name,email FROM users").fetchall()
+        students = c.execute("SELECT name,email,profession,institution FROM users").fetchall()
         for s in students:
-            st.write(f"{s[0]} - {s[1]}")
+            st.write(f"{s[0]} - {s[1]} | {s[2]} @ {s[3]}")
 
 # -----------------------------
 # NAVIGATION
