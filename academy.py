@@ -11,7 +11,7 @@ from fpdf import FPDF
 st.set_page_config(page_title="EinTrust Academy", layout="wide", initial_sidebar_state="collapsed")
 
 LOGO_URL = "https://raw.githubusercontent.com/eintrusts/CAP/main/EinTrust%20%20(2).png"
-ADMIN_PASSWORD = "EinTrustAdmin123"  # change in production
+ADMIN_PASSWORD = "eintrust2025"  # change in production
 
 DB_PATH = "academy.db"
 
