@@ -1,7 +1,7 @@
 import streamlit as st
 import sqlite3
-from datetime import datetime
 import hashlib
+from datetime import datetime
 
 # ----------------------------
 # DATABASE SETUP
@@ -29,7 +29,7 @@ CREATE TABLE IF NOT EXISTS students (
 c.execute("""
 CREATE TABLE IF NOT EXISTS courses (
     course_id INTEGER PRIMARY KEY AUTOINCREMENT,
-    title TEXT NOT NULL,
+    title TEXT NOT NULL UNIQUE,
     subtitle TEXT,
     description TEXT,
     price REAL,
@@ -74,11 +74,10 @@ CREATE TABLE IF NOT EXISTS certificates (
 conn.commit()
 
 # ----------------------------
-# DUMMY DATA
+# INSERT DUMMY COURSES & LESSONS
 # ----------------------------
 def insert_dummy_data():
-    c.execute("SELECT COUNT(*) FROM courses")
-    if c.fetchone()[0] == 0:
+    try:
         courses = [
             ("Sustainability Basics", "Introduction to Sustainability",
              "Learn the fundamentals of sustainability and eco-friendly practices.", 499.0, "Sustainability", "https://via.placeholder.com/350x150"),
@@ -88,11 +87,13 @@ def insert_dummy_data():
              "Dive into ESG concepts, reporting standards, and real-world case studies.", 799.0, "ESG", "https://via.placeholder.com/350x150")
         ]
         for title, subtitle, desc, price, cat, banner in courses:
-            c.execute("INSERT INTO courses (title, subtitle, description, price, category, banner_path) VALUES (?,?,?,?,?,?)",
-                      (title, subtitle, desc, float(price), cat, banner))
+            c.execute("""
+            INSERT OR IGNORE INTO courses (title, subtitle, description, price, category, banner_path)
+            VALUES (?,?,?,?,?,?)
+            """, (title, subtitle, desc, float(price), cat, banner))
         conn.commit()
 
-        # Lessons
+        # Lessons for each course
         lessons = {
             1: [("Introduction to Sustainability","text",""), ("Global Practices","pdf",""), ("Local Action","video","")],
             2: [("Causes of Climate Change","text",""), ("Impacts","pdf",""), ("Mitigation Strategies","video","")],
@@ -100,20 +101,23 @@ def insert_dummy_data():
         }
         for cid, les in lessons.items():
             for title, ctype, path in les:
-                c.execute("INSERT INTO lessons (course_id,title,content_type,content_path) VALUES (?,?,?,?)",
-                          (cid, title, ctype, path))
+                c.execute("""
+                INSERT OR IGNORE INTO lessons (course_id,title,content_type,content_path)
+                VALUES (?,?,?,?)
+                """, (cid, title, ctype, path))
         conn.commit()
+    except Exception as e:
+        st.error(f"Error inserting dummy data: {e}")
+
 insert_dummy_data()
 
 # ----------------------------
 # SESSION STATE
 # ----------------------------
-if 'student_id' not in st.session_state:
-    st.session_state.student_id = None
-if 'admin_logged_in' not in st.session_state:
-    st.session_state.admin_logged_in = False
-if 'page' not in st.session_state:
-    st.session_state.page = "home"
+if 'student_id' not in st.session_state: st.session_state.student_id = None
+if 'admin_logged_in' not in st.session_state: st.session_state.admin_logged_in = False
+if 'page' not in st.session_state: st.session_state.page = "home"
+if 'selected_course' not in st.session_state: st.session_state.selected_course = None
 
 # ----------------------------
 # STYLING
@@ -137,10 +141,11 @@ a:hover {color: #009acd;}
 """, unsafe_allow_html=True)
 
 # ----------------------------
-# UTILITY FUNCTIONS
+# UTILITY
 # ----------------------------
-def hash_password(pw):
-    return hashlib.sha256(pw.encode()).hexdigest()
+def hash_password(pw): return hashlib.sha256(pw.encode()).hexdigest()
+
+def verify_password(pw, hashed): return hash_password(pw) == hashed
 
 # ----------------------------
 # TOP NAV
@@ -151,20 +156,18 @@ def top_nav():
     categories = ["All"] + categories
 
     col1, col2, col3 = st.columns([2,5,2])
-    with col1:
-        st.image("https://github.com/eintrusts/CAP/blob/main/EinTrust%20%20(2).png", width=180)
+    with col1: st.image("https://github.com/eintrusts/CAP/blob/main/EinTrust%20%20(2).png", width=180)
     with col2:
         st.markdown("""
-            <span class="nav-link">Browse Courses</span>
-            <span class="nav-link">About</span>
-            <span class="nav-link">Contact</span>
+            <span class="nav-link" onclick="window.location.href='#'">Browse Courses</span>
+            <span class="nav-link" onclick="window.location.href='#'">About</span>
+            <span class="nav-link" onclick="window.location.href='#'">Contact</span>
             """, unsafe_allow_html=True)
         search_query = st.text_input("Search for anything", key="search")
         category_filter = st.selectbox("Category", ["All"] + categories[1:], key="cat_filter")
     with col3:
         if st.session_state.student_id is None:
-            if st.button("Login", key="login_btn_top"):
-                st.session_state.page = "login"
+            if st.button("Login", key="login_btn_top"): st.session_state.page = "login"
     return search_query, category_filter
 
 # ----------------------------
@@ -177,9 +180,7 @@ def display_courses(search_query="", category_filter="All"):
         query += " WHERE category=?"
         params.append(category_filter)
     courses = c.execute(query, params).fetchall()
-
-    if search_query:
-        courses = [crs for crs in courses if search_query.lower() in crs[1].lower()]
+    if search_query: courses = [crs for crs in courses if search_query.lower() in crs[1].lower()]
 
     for crs in courses:
         st.markdown(f"""
@@ -205,7 +206,8 @@ def home_page():
 # MAIN
 # ----------------------------
 def main():
-    if st.session_state.page == "home":
-        home_page()
+    if st.session_state.page == "home": home_page()
 
 main()
+
+
