@@ -134,7 +134,7 @@ st.markdown("""
 # ---------------------------
 def page_home():
     st.image("https://github.com/eintrusts/CAP/blob/main/EinTrust%20%20(2).png?raw=true", width=180)
-    st.header("Courses")
+    st.header("📚 Available Courses")
     courses = get_courses()
     if not courses:
         st.info("No courses available yet.")
@@ -154,7 +154,7 @@ def page_home():
 
 def page_signup():
     st.image("https://github.com/eintrusts/CAP/blob/main/EinTrust%20%20(2).png?raw=true", width=180)
-    st.header("Create Profile")
+    st.header("📝 Create Profile")
     with st.form("signup_form"):
         profile_picture = st.file_uploader("Profile Picture", type=["png","jpg","jpeg"])
         full_name = st.text_input("Full Name")
@@ -181,68 +181,90 @@ def page_signup():
 
 def page_login():
     st.image("https://github.com/eintrusts/CAP/blob/main/EinTrust%20%20(2).png?raw=true", width=180)
-    st.header("Student Login")
+    st.header("🔐 Student Login")
     email = st.text_input("Email ID", key="login_email")
     password = st.text_input("Password", type="password", key="login_pass")
     if st.button("Login"):
         student = authenticate_student(email, password)
         if student:
-            st.success("✅ Login successful!")
+            st.success("✅ Login successful! Redirecting...")
             st.session_state["student"] = student
-            st.session_state["page"] = "dashboard"
+            st.session_state["page"] = "student_dashboard"
+            st.experimental_rerun()
         else:
             st.error("❌ Invalid credentials.")
 
-def page_dashboard():
+def page_student_dashboard():
     st.image("https://github.com/eintrusts/CAP/blob/main/EinTrust%20%20(2).png?raw=true", width=180)
-    st.header("Student Dashboard")
+    st.header("🎓 Student Dashboard")
     student = st.session_state.get("student")
     if student:
-        st.write(f"Welcome, **{student[1]}** ")
+        st.write(f"Welcome, **{student[1]}** 👋")
         st.write("Your enrolled courses will appear here soon.")
+        if st.button("Logout"):
+            st.session_state.clear()
+            st.experimental_rerun()
     else:
         st.warning("Please login first.")
 
 def page_admin():
     st.image("https://github.com/eintrusts/CAP/blob/main/EinTrust%20%20(2).png?raw=true", width=180)
-    st.header("Admin Login")
+    st.header("👩‍💻 Admin Login")
     admin_pass = st.text_input("Enter Admin Password", type="password")
     if st.button("Login as Admin"):
         if admin_pass == "eintrust2025":  # Change this for security
-            st.success("Welcome Team")
-            st.subheader("Dashboard")
-
-            st.subheader("All Students")
-            students = c.execute("SELECT full_name,email,profession,institution FROM students").fetchall()
-            if students:
-                for s in students:
-                    st.write(s)
-            else:
-                st.info("No students registered yet.")
-
-            st.subheader("All Courses")
-            courses = get_courses()
-            if courses:
-                for c_row in courses:
-                    st.write(c_row)
-            else:
-                st.info("No courses available.")
+            st.success("✅ Welcome Team, Redirecting...")
+            st.session_state["page"] = "admin_dashboard"
+            st.experimental_rerun()
         else:
-            st.error("Wrong admin password.")
+            st.error("❌ Wrong admin password.")
+
+def page_admin_dashboard():
+    st.image("https://github.com/eintrusts/CAP/blob/main/EinTrust%20%20(2).png?raw=true", width=180)
+    st.header("📊 Admin Dashboard")
+
+    st.subheader("All Students")
+    students = c.execute("SELECT full_name,email,profession,institution FROM students").fetchall()
+    if students:
+        for s in students:
+            st.write(s)
+    else:
+        st.info("No students registered yet.")
+
+    st.subheader("All Courses")
+    courses = get_courses()
+    if courses:
+        for c_row in courses:
+            st.write(c_row)
+    else:
+        st.info("No courses available.")
+
+    if st.button("Logout"):
+        st.session_state.clear()
+        st.experimental_rerun()
 
 # ---------------------------
 # MAIN NAVIGATION
 # ---------------------------
-tabs = st.tabs(["Home", "Signup", "Login", "Admin"])
+if "page" not in st.session_state:
+    st.session_state["page"] = "home"
 
-with tabs[0]:
-    page_home()
-with tabs[1]:
-    page_signup()
-with tabs[2]:
-    if "page" in st.session_state and st.session_state["page"]=="dashboard":
-        page_dashboard()
-    else:
+if st.session_state["page"] == "home":
+    tabs = st.tabs(["Home", "Signup", "Login", "Admin"])
+    with tabs[0]:
+        page_home()
+    with tabs[1]:
+        page_signup()
+    with tabs[2]:
         page_login()
-with tabs[3]:
-    page_admin()
+    with tabs[3]:
+        page_admin()
+
+elif st.session_state["page"] == "signup":
+    page_signup()
+elif st.session_state["page"] == "login":
+    page_login()
+elif st.session_state["page"] == "student_dashboard":
+    page_student_dashboard()
+elif st.session_state["page"] == "admin_dashboard":
+    page_admin_dashboard()
