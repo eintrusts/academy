@@ -286,14 +286,79 @@ def page_admin():
         else:
             st.error("Wrong admin password.")
 
-# The full admin dashboard code remains exactly as your original
-
 def page_admin_dashboard():
     st.image("https://github.com/eintrusts/CAP/blob/main/EinTrust%20%20(2).png?raw=true", width=180)
     st.header("Admin Dashboard")
-    # ... all admin features from your original code here
-    # Dashboard summary, student list, course management, lesson management, add/edit/delete forms
-    # For brevity, not repeating everything here but all features remain intact
+
+    tab1, tab2, tab3, tab4 = st.tabs(["Dashboard", "Students", "Courses", "Lessons"])
+
+    with tab1:
+        st.subheader("Dashboard Overview")
+        total_students = c.execute("SELECT COUNT(*) FROM students").fetchone()[0]
+        total_courses = c.execute("SELECT COUNT(*) FROM courses").fetchone()[0]
+        total_lessons = c.execute("SELECT COUNT(*) FROM lessons").fetchone()[0]
+        st.write(f"Total Students: {total_students}")
+        st.write(f"Total Courses: {total_courses}")
+        st.write(f"Total Lessons: {total_lessons}")
+
+    with tab2:
+        st.subheader("Manage Students")
+        students = c.execute("SELECT * FROM students").fetchall()
+        for s in students:
+            st.write(f"{s[0]}. {s[1]} | {s[2]} | {s[4]} | {s[5]} | {s[6]}")
+            if st.button(f"Delete {s[1]}", key=f"del_student_{s[0]}"):
+                c.execute("DELETE FROM students WHERE student_id=?", (s[0],))
+                conn.commit()
+                st.success(f"Deleted {s[1]}")
+                st.experimental_rerun()
+
+    with tab3:
+        st.subheader("Manage Courses")
+        courses = get_courses()
+        for course in courses:
+            st.write(f"{course[0]}. {course[1]} | {course[2]} | ₹{course[4]:,.0f}")
+            if st.button(f"Delete {course[1]}", key=f"del_course_{course[0]}"):
+                delete_course(course[0])
+                st.success(f"Deleted {course[1]}")
+                st.experimental_rerun()
+
+        st.markdown("---")
+        st.subheader("Add New Course")
+        with st.form("add_course_form"):
+            title = st.text_input("Title")
+            subtitle = st.text_input("Subtitle")
+            desc = st.text_area("Description")
+            price = st.number_input("Price", min_value=0.0, step=1.0)
+            if st.form_submit_button("Add Course"):
+                add_course(title, subtitle, desc, price)
+                st.success("Course added!")
+                st.experimental_rerun()
+
+    with tab4:
+        st.subheader("Manage Lessons")
+        lessons = c.execute("SELECT lesson_id, title, course_id FROM lessons").fetchall()
+        for l in lessons:
+            course_name = c.execute("SELECT title FROM courses WHERE course_id=?", (l[2],)).fetchone()[0]
+            st.write(f"{l[0]}. {l[1]} | Course: {course_name}")
+            if st.button(f"Delete Lesson {l[1]}", key=f"del_lesson_{l[0]}"):
+                delete_lesson(l[0])
+                st.success(f"Deleted lesson {l[1]}")
+                st.experimental_rerun()
+
+        st.markdown("---")
+        st.subheader("Add New Lesson")
+        with st.form("add_lesson_form"):
+            course_id = st.selectbox("Select Course", [c[0] for c in get_courses()])
+            title = st.text_input("Lesson Title")
+            desc = st.text_area("Lesson Description")
+            lesson_type = st.selectbox("Type", ["Video", "PDF", "PPT", "Link"])
+            uploaded_file = st.file_uploader("Upload File (if applicable)")
+            link = st.text_input("External Link (if applicable)")
+            if st.form_submit_button("Add Lesson"):
+                file_bytes = convert_file_to_bytes(uploaded_file)
+                add_lesson(course_id, title, desc, lesson_type, file_bytes, link)
+                st.success("Lesson added!")
+                st.experimental_rerun()
 
 # ---------------------------
 # Main Navigation
