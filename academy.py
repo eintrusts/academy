@@ -1,5 +1,5 @@
 import streamlit as st
-import sqlite3, os, time
+import sqlite3, os
 from fpdf import FPDF
 
 # ---------------------------
@@ -83,25 +83,6 @@ c.execute("""CREATE TABLE IF NOT EXISTS payments(
 conn.commit()
 
 # ---------------------------
-# Dummy Data
-# ---------------------------
-def load_dummy_data():
-    c.execute("INSERT OR IGNORE INTO students(name,email,password,sex,profession,institution,mobile) VALUES(?,?,?,?,?,?,?)",
-              ("Test Student","student@example.com","1234","Male","Student","ABC University","9999999999"))
-    c.execute("INSERT OR IGNORE INTO courses(title,description,price) VALUES(?,?,?)",
-              ("Basics of Sustainability","Learn sustainability fundamentals",0))
-    c.execute("INSERT OR IGNORE INTO courses(title,description,price) VALUES(?,?,?)",
-              ("Advanced ESG","In-depth ESG course",5000))
-    c.execute("INSERT OR IGNORE INTO lessons(course_id,title,content_type,content_path) VALUES(?,?,?,?)",
-              (1,"Introduction","text","This is the introduction text."))
-    c.execute("INSERT OR IGNORE INTO lessons(course_id,title,content_type,content_path) VALUES(?,?,?,?)",
-              (1,"Sustainability Video","video","https://www.learningcontainer.com/wp-content/uploads/2020/05/sample-mp4-file.mp4"))
-    c.execute("INSERT OR IGNORE INTO lessons(course_id,title,content_type,content_path) VALUES(?,?,?,?)",
-              (2,"ESG PDF","pdf","This is a dummy pdf content."))
-    conn.commit()
-load_dummy_data()
-
-# ---------------------------
 # Utilities
 # ---------------------------
 def inr_format(amount):
@@ -141,6 +122,8 @@ def student_dashboard(user):
     with tabs[0]:
         c.execute("SELECT * FROM courses")
         courses = c.fetchall()
+        if not courses:
+            st.info("No courses available yet.")
         for course in courses:
             st.markdown(f"<div class='card'><h3>{course[1]}</h3><p>{course[2]}</p><b>Price: {inr_format(course[3])}</b></div>",unsafe_allow_html=True)
             enrolled=c.execute("SELECT * FROM payments WHERE student_id=? AND course_id=? AND status='Success'",(user['id'],course[0])).fetchone()
@@ -160,11 +143,14 @@ def student_dashboard(user):
                      JOIN courses c ON c.course_id=l.course_id
                      WHERE p.student_id=? AND p.status='Success'""",(user['id'],))
         lessons = c.fetchall()
+        if not lessons:
+            st.info("No lessons yet.")
         for lesson in lessons:
             lesson_id,title,ctype,cpath,course_id,course_title = lesson
             st.markdown(f"<div class='card'><b>Course:</b> {course_title} | <b>Lesson:</b> {title}</div>",unsafe_allow_html=True)
             if ctype=="video": st.video(cpath)
-            else: st.write(cpath)
+            elif ctype=="text": st.write(cpath)
+            elif ctype=="pdf": st.write("PDF Content:",cpath)
             viewed = c.execute("SELECT viewed FROM lesson_progress WHERE student_id=? AND lesson_id=?",(user['id'],lesson_id)).fetchone()[0]
             if viewed: st.success("Completed ✅")
             else:
@@ -181,7 +167,7 @@ def student_dashboard(user):
             total_lessons = c.fetchone()[0]
             c.execute("SELECT COUNT(*) FROM lesson_progress WHERE student_id=? AND lesson_id IN (SELECT lesson_id FROM lessons WHERE course_id=?) AND viewed=1", (user['id'], course_id))
             completed_lessons = c.fetchone()[0]
-            if total_lessons==completed_lessons:
+            if total_lessons>0 and total_lessons==completed_lessons:
                 c.execute("SELECT cert_file FROM certificates WHERE student_id=? AND course_id=?", (user['id'], course_id))
                 cert_exist = c.fetchone()
                 if not cert_exist:
@@ -218,26 +204,72 @@ def student_dashboard(user):
         st.write("**Profession:**", profile[3])
         st.write("**Institution:**", profile[4])
         st.write("**Mobile:**", profile[5])
-        st.info("Profile editing feature can be added here.")
 
 # ---------------------------
 # Admin Dashboard
 # ---------------------------
 def admin_dashboard():
-    tabs = st.tabs(["Students","Courses","Lessons"])
+    tabs = st.tabs(["Students","Courses","Lessons","Add Course","Add Lesson"])
+    
     with tabs[0]:
         st.subheader("All Students")
         c.execute("SELECT student_id,name,email,sex,profession,institution,mobile FROM students")
         st.dataframe(c.fetchall(),use_container_width=True)
+    
     with tabs[1]:
         st.subheader("All Courses")
-        c.execute("SELECT * FROM courses")
-        st.dataframe(c.fetchall(),use_container_width=True)
+        courses = c.execute("SELECT * FROM courses").fetchall()
+        st.dataframe(courses, use_container_width=True)
+        for course in courses:
+            if st.button(f"Delete {course[1]}", key=f"del_course_{course[0]}"):
+                c.execute("DELETE FROM courses WHERE course_id=?", (course[0],))
+                c.execute("DELETE FROM lessons WHERE course_id=?", (course[0],))
+                conn.commit()
+                st.success("Course deleted!")
+                st.experimental_rerun()
+    
     with tabs[2]:
         st.subheader("All Lessons")
-        c.execute("""SELECT l.lesson_id, l.title, l.content_type, c.title 
-                     FROM lessons l JOIN courses c ON c.course_id=l.course_id""")
-        st.dataframe(c.fetchall(),use_container_width=True)
+        lessons = c.execute("""SELECT l.lesson_id, l.title, l.content_type, c.title 
+                               FROM lessons l JOIN courses c ON c.course_id=l.course_id""").fetchall()
+        st.dataframe(lessons,use_container_width=True)
+        for lesson in lessons:
+            if st.button(f"Delete Lesson {lesson[1]}", key=f"del_lesson_{lesson[0]}"):
+                c.execute("DELETE FROM lessons WHERE lesson_id=?", (lesson[0],))
+                conn.commit()
+                st.success("Lesson deleted!")
+                st.experimental_rerun()
+    
+    with tabs[3]:
+        st.subheader("➕ Add New Course")
+        with st.form("add_course"):
+            title = st.text_input("Course Title")
+            desc = st.text_area("Description")
+            price = st.number_input("Price (INR)",min_value=0)
+            submit = st.form_submit_button("Add Course")
+            if submit:
+                c.execute("INSERT INTO courses(title,description,price) VALUES(?,?,?)",(title,desc,price))
+                conn.commit()
+                st.success("Course added!")
+    
+    with tabs[4]:
+        st.subheader("➕ Add New Lesson")
+        c.execute("SELECT course_id,title FROM courses")
+        courses = c.fetchall()
+        if courses:
+            course_choice = st.selectbox("Select Course",[f"{c[0]} - {c[1]}" for c in courses])
+            course_id = int(course_choice.split(" - ")[0])
+            with st.form("add_lesson"):
+                title = st.text_input("Lesson Title")
+                ctype = st.selectbox("Content Type",["video","text","pdf"])
+                path = st.text_input("Content Path / URL / Text")
+                submit = st.form_submit_button("Add Lesson")
+                if submit:
+                    c.execute("INSERT INTO lessons(course_id,title,content_type,content_path) VALUES(?,?,?,?)",(course_id,title,ctype,path))
+                    conn.commit()
+                    st.success("Lesson added!")
+        else:
+            st.info("No courses yet. Add a course first.")
 
 # ---------------------------
 # Signup / Login
