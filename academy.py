@@ -31,7 +31,7 @@ c.execute('''CREATE TABLE IF NOT EXISTS lessons (
     FOREIGN KEY(course_id) REFERENCES courses(course_id)
 )''')
 
-# Students table
+# Students table (profile_picture removed)
 c.execute('''CREATE TABLE IF NOT EXISTS students (
     student_id INTEGER PRIMARY KEY AUTOINCREMENT,
     full_name TEXT,
@@ -238,14 +238,34 @@ def page_student_dashboard():
     st.header("Student Dashboard")
     student = st.session_state.get("student")
     if student:
-        st.subheader(f"Welcome, {student[1]}")
+        st.subheader(f"{student[1]}")
+        st.write(f"Email: {student[2]}")
+        st.write(f"Gender: {student[4]}")
+        st.write(f"Profession: {student[5]}")
+        st.write(f"Institution: {student[6]}")
         st.write("---")
         st.subheader("Your Enrolled Courses")
         courses = get_student_courses(student[0])
         if not courses:
             st.info("You have not enrolled in any courses yet.")
         else:
-            display_courses_grid(courses, show_lessons=True)
+            for course in courses:
+                st.markdown(f"### {course[1]}")
+                st.write(course[3])
+                lessons = get_lessons(course[0])
+                if lessons:
+                    for l in lessons:
+                        st.markdown(f"**{l[2]}** ({l[4]})")
+                        st.write(l[3])
+                        if l[4] == "Video" and l[5]:
+                            st.video(io.BytesIO(l[5]))
+                        elif l[4] == "PDF" and l[5]:
+                            st.download_button(label=f"Download PDF: {l[2]}", data=l[5], file_name=f"{l[2]}.pdf")
+                        elif l[4] == "PPT" and l[5]:
+                            st.download_button(label=f"Download PPT: {l[2]}", data=l[5], file_name=f"{l[2]}.pptx")
+                        elif l[4] == "Link" and l[6]:
+                            st.markdown(f"[Open Link: {l[2]}]({l[6]})", unsafe_allow_html=True)
+                st.write("---")
         if st.button("Logout"):
             st.session_state.clear()
             st.experimental_rerun()
@@ -270,57 +290,75 @@ def page_admin_dashboard():
     st.image("https://github.com/eintrusts/CAP/blob/main/EinTrust%20%20(2).png?raw=true", width=180)
     st.header("Admin Dashboard")
 
-    # Admin toggle buttons like home slider
-    admin_pages = ["Dashboard", "Students", "Courses", "Logout"]
-    if "admin_page" not in st.session_state:
-        st.session_state["admin_page"] = "Dashboard"
-    cols = st.columns(len(admin_pages))
-    for idx, p in enumerate(admin_pages):
-        if cols[idx].button(p):
-            st.session_state["admin_page"] = p
+    tab1, tab2, tab3, tab4 = st.tabs(["Dashboard", "Students", "Courses", "Lessons"])
 
-    page = st.session_state["admin_page"]
-
-    # ------------------ DASHBOARD ------------------
-    if page == "Dashboard":
+    with tab1:
+        st.subheader("Dashboard Overview")
         total_students = c.execute("SELECT COUNT(*) FROM students").fetchone()[0]
         total_courses = c.execute("SELECT COUNT(*) FROM courses").fetchone()[0]
         total_lessons = c.execute("SELECT COUNT(*) FROM lessons").fetchone()[0]
-        st.subheader("Summary")
-        st.write(f"**Total Students:** {total_students}")
-        st.write(f"**Total Courses:** {total_courses}")
-        st.write(f"**Total Lessons:** {total_lessons}")
+        st.write(f"Total Students: {total_students}")
+        st.write(f"Total Courses: {total_courses}")
+        st.write(f"Total Lessons: {total_lessons}")
 
-    # ------------------ STUDENTS ------------------
-    elif page == "Students":
-        st.subheader("All Students Data")
-        students = c.execute("SELECT student_id, full_name, email, gender, profession, institution FROM students").fetchall()
+    with tab2:
+        st.subheader("Manage Students")
+        students = c.execute("SELECT * FROM students").fetchall()
         for s in students:
-            st.write(f"ID: {s[0]}, Name: {s[1]}, Email: {s[2]}, Gender: {s[3]}, Profession: {s[4]}, Institution: {s[5]}")
+            st.write(f"{s[0]}. {s[1]} | {s[2]} | {s[4]} | {s[5]} | {s[6]}")
+            if st.button(f"Delete {s[1]}", key=f"del_student_{s[0]}"):
+                c.execute("DELETE FROM students WHERE student_id=?", (s[0],))
+                conn.commit()
+                st.success(f"Deleted {s[1]}")
+                st.experimental_rerun()
 
-    # ------------------ COURSES ------------------
-    elif page == "Courses":
-        st.subheader("Courses Management")
-
-        # Add / edit courses and lessons same as base code
+    with tab3:
+        st.subheader("Manage Courses")
         courses = get_courses()
-        if courses:
-            for course in courses:
-                with st.expander(f"{course[1]} ({'Free' if course[4]==0 else f'₹{course[4]:,.0f}'})"):
-                    st.write(f"Subtitle: {course[2]}")
-                    st.write(f"Description: {course[3]}")
+        for course in courses:
+            st.write(f"{course[0]}. {course[1]} | {course[2]} | ₹{course[4]:,.0f}")
+            if st.button(f"Delete {course[1]}", key=f"del_course_{course[0]}"):
+                delete_course(course[0])
+                st.success(f"Deleted {course[1]}")
+                st.experimental_rerun()
 
-                    # Lessons under course
-                    lessons = get_lessons(course[0])
-                    if lessons:
-                        for l in lessons:
-                            with st.expander(f"Lesson: {l[2]} ({l[4]})"):
-                                st.write(f"Description: {l[3]}")
-                                st.write(f"Link: {l[6]}" if l[4]=="Link" else "File Uploaded")
+        st.markdown("---")
+        st.subheader("Add New Course")
+        with st.form("add_course_form"):
+            title = st.text_input("Title")
+            subtitle = st.text_input("Subtitle")
+            desc = st.text_area("Description")
+            price = st.number_input("Price", min_value=0.0, step=1.0)
+            if st.form_submit_button("Add Course"):
+                add_course(title, subtitle, desc, price)
+                st.success("Course added!")
+                st.experimental_rerun()
 
-    elif page == "Logout":
-        st.session_state.clear()
-        st.experimental_rerun()
+    with tab4:
+        st.subheader("Manage Lessons")
+        lessons = c.execute("SELECT lesson_id, title, course_id FROM lessons").fetchall()
+        for l in lessons:
+            course_name = c.execute("SELECT title FROM courses WHERE course_id=?", (l[2],)).fetchone()[0]
+            st.write(f"{l[0]}. {l[1]} | Course: {course_name}")
+            if st.button(f"Delete Lesson {l[1]}", key=f"del_lesson_{l[0]}"):
+                delete_lesson(l[0])
+                st.success(f"Deleted lesson {l[1]}")
+                st.experimental_rerun()
+
+        st.markdown("---")
+        st.subheader("Add New Lesson")
+        with st.form("add_lesson_form"):
+            course_id = st.selectbox("Select Course", [c[0] for c in get_courses()])
+            title = st.text_input("Lesson Title")
+            desc = st.text_area("Lesson Description")
+            lesson_type = st.selectbox("Type", ["Video", "PDF", "PPT", "Link"])
+            uploaded_file = st.file_uploader("Upload File (if applicable)")
+            link = st.text_input("External Link (if applicable)")
+            if st.form_submit_button("Add Lesson"):
+                file_bytes = convert_file_to_bytes(uploaded_file)
+                add_lesson(course_id, title, desc, lesson_type, file_bytes, link)
+                st.success("Lesson added!")
+                st.experimental_rerun()
 
 # ---------------------------
 # Main Navigation
