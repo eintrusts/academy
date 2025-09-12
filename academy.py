@@ -4,9 +4,6 @@ import datetime
 from PIL import Image, ImageDraw, ImageFont
 import os
 import pandas as pd
-import razorpay
-import smtplib
-from email.message import EmailMessage
 
 # ---------------------------
 # Config
@@ -17,13 +14,6 @@ os.makedirs(CERT_FOLDER, exist_ok=True)
 DB_FILE = "eintrust_academy.db"
 
 PASS_MARK = 70  # Quiz pass percentage
-
-# ---------------------------
-# Razorpay Config
-# ---------------------------
-RAZORPAY_KEY_ID = "YOUR_KEY_ID"
-RAZORPAY_KEY_SECRET = "YOUR_KEY_SECRET"
-razorpay_client = razorpay.Client(auth=(RAZORPAY_KEY_ID, RAZORPAY_KEY_SECRET))
 
 # ---------------------------
 # Database Setup
@@ -77,26 +67,6 @@ def calculate_progress(student_id, course_id):
     completed = c.fetchone()[0]
     return int((completed/total)*100) if total else 0
 
-def create_order(student_id, course_id, amount):
-    order = razorpay_client.order.create(dict(amount=int(amount*100), currency='INR', payment_capture=1))
-    c.execute("INSERT INTO payments (student_id, course_id, amount, status, transaction_id) VALUES (?,?,?,?,?)",
-              (student_id, course_id, amount, "pending", order['id']))
-    conn.commit()
-    return order['id'], int(amount*100)
-
-def send_certificate_email(to_email, cert_file):
-    msg = EmailMessage()
-    msg['Subject'] = "Your EinTrust Academy Certificate"
-    msg['From'] = "academy@eintrust.org"
-    msg['To'] = to_email
-    msg.set_content("Congratulations! Your course completion certificate is attached.")
-    with open(cert_file, 'rb') as f:
-        msg.add_attachment(f.read(), maintype='image', subtype='png', filename=os.path.basename(cert_file))
-    with smtplib.SMTP('smtp.gmail.com', 587) as smtp:
-        smtp.starttls()
-        smtp.login("your_email@gmail.com", "your_password")
-        smtp.send_message(msg)
-
 # ---------------------------
 # Admin Tabs
 # ---------------------------
@@ -147,14 +117,12 @@ def admin_tabs():
     
     # Payments
     with tabs[5]:
-        st.subheader("Payments")
+        st.subheader("Payments (Test Mode)")
         df_payments = pd.read_sql("""SELECT p.payment_id, s.name as student, c.title as course, p.amount, p.status, p.transaction_id 
                                      FROM payments p 
                                      JOIN students s ON p.student_id=s.student_id 
                                      JOIN courses c ON p.course_id=c.course_id""", conn)
         df_payments['amount'] = df_payments['amount'].apply(inr_format)
-        status_filter = st.selectbox("Filter by Payment Status", ["All","paid","pending"])
-        if status_filter != "All": df_payments = df_payments[df_payments['status']==status_filter]
         st.dataframe(df_payments)
     
     # Revenue Chart
@@ -165,11 +133,6 @@ def admin_tabs():
                                     WHERE p.status='paid' GROUP BY c.title""", conn)
         if not df_revenue.empty:
             st.bar_chart(df_revenue.set_index("course")["total_revenue"])
-        
-        df_payments_time = pd.read_sql("""SELECT strftime('%Y-%m',date('now')) as month, SUM(amount) as revenue 
-                                         FROM payments WHERE status='paid' GROUP BY month""", conn)
-        if not df_payments_time.empty:
-            st.line_chart(df_payments_time.set_index("month")["revenue"])
 
 # ---------------------------
 # Student Dashboard / Tabs
@@ -223,6 +186,9 @@ def course_timeline(course_id):
         else:
             st.markdown(f"[Locked] {title}")
 
+# ---------------------------
+# Quiz & Certificate Logic
+# ---------------------------
 def student_quiz_tab():
     st.subheader("Course Quizzes")
     student_id = st.session_state.user["id"]
@@ -236,10 +202,8 @@ def student_quiz_tab():
     for course in enrolled_courses:
         course_id, course_title = course
         st.markdown(f"### {course_title}")
-        
         c.execute("SELECT quiz_id, question, option1, option2, option3, option4, answer FROM quizzes WHERE course_id=?", (course_id,))
         quizzes = c.fetchall()
-        
         if not quizzes:
             st.write("No quizzes available for this course yet.")
             continue
@@ -255,14 +219,11 @@ def student_quiz_tab():
         if st.button(f"Submit Quiz for {course_title}"):
             percentage = (score / total) * 100
             st.write(f"Your Score: {score}/{total} ({percentage:.2f}%)")
-            
             if percentage >= PASS_MARK:
                 st.success("Congratulations! You passed the course.")
-                
-                # Check if certificate already exists
+                # Certificate
                 c.execute("SELECT cert_file FROM certificates WHERE student_id=? AND course_id=?", (student_id, course_id))
                 existing = c.fetchone()
-                
                 if existing:
                     st.info("Certificate already generated.")
                     st.download_button("Download Certificate", open(existing[0], "rb").read(), file_name=existing[0].split("/")[-1])
@@ -273,15 +234,15 @@ def student_quiz_tab():
                     conn.commit()
                     st.success("Certificate generated automatically!")
                     st.download_button("Download Certificate", open(cert_file, "rb").read(), file_name=cert_file.split("/")[-1])
-                    # Optionally, send via email
-                    # send_certificate_email(st.session_state.user["email"], cert_file)
             else:
                 st.warning(f"Score below passing mark ({PASS_MARK}%). Please try again.")
 
+# ---------------------------
+# Student Tabs
+# ---------------------------
 def student_tabs():
     tabs = st.tabs(["Course Catalog","Timeline Lessons","Quiz","Certificate","Dashboard"])
     
-    # Course Catalog tab
     with tabs[0]:
         st.subheader("Course Catalog")
         df_courses = pd.read_sql("SELECT * FROM courses", conn)
@@ -289,7 +250,6 @@ def student_tabs():
         for index, row in df_courses.iterrows():
             st.markdown(f"**{row['title']}** - {row['price']}")
     
-    # Timeline Lessons tab
     with tabs[1]:
         c.execute("SELECT course_id, title FROM courses WHERE course_id IN (SELECT course_id FROM payments WHERE student_id=? AND status='paid')", (st.session_state.user["id"],))
         enrolled_courses = c.fetchall()
@@ -301,11 +261,9 @@ def student_tabs():
         else:
             st.info("No enrolled courses to show timeline.")
     
-    # Quiz Tab
     with tabs[2]:
         student_quiz_tab()
     
-    # Certificate Tab
     with tabs[3]:
         st.subheader("My Certificates")
         student_id = st.session_state.user["id"]
@@ -320,7 +278,6 @@ def student_tabs():
         else:
             st.info("No certificates available yet.")
     
-    # Dashboard Tab
     with tabs[4]:
         student_dashboard()
 
