@@ -112,13 +112,10 @@ def add_lesson(course_id, title, description, lesson_type, file, link):
     conn.commit()
 
 # ---------------------------
-# Page Config
+# Page Config + CSS
 # ---------------------------
 st.set_page_config(page_title="EinTrust Academy", layout="wide")
 
-# ---------------------------
-# Dark Theme + Button CSS
-# ---------------------------
 st.markdown("""
     <style>
         body {background-color: #0d0f12; color: #e0e0e0;}
@@ -230,7 +227,26 @@ def page_student_dashboard():
         st.write("---")
         st.subheader("Your Enrolled Courses")
         courses = get_student_courses(student[0])
-        display_courses_grid(courses, show_lessons=True)
+        if not courses:
+            st.info("You have not enrolled in any courses yet.")
+        else:
+            for course in courses:
+                st.markdown(f"### {course[1]}")
+                st.write(course[3])
+                lessons = get_lessons(course[0])
+                if lessons:
+                    for l in lessons:
+                        st.markdown(f"**{l[2]}** ({l[4]})")
+                        st.write(l[3])
+                        if l[4] == "Video" and l[5]:
+                            st.video(io.BytesIO(l[5]))
+                        elif l[4] == "PDF" and l[5]:
+                            st.download_button(label=f"Download PDF: {l[2]}", data=l[5], file_name=f"{l[2]}.pdf")
+                        elif l[4] == "PPT" and l[5]:
+                            st.download_button(label=f"Download PPT: {l[2]}", data=l[5], file_name=f"{l[2]}.pptx")
+                        elif l[4] == "Link" and l[6]:
+                            st.markdown(f"[Open Link: {l[2]}]({l[6]})", unsafe_allow_html=True)
+                st.write("---")
         if st.button("Logout"):
             st.session_state.clear()
             st.experimental_rerun()
@@ -251,47 +267,74 @@ def page_admin():
 def page_admin_dashboard():
     st.image("https://github.com/eintrusts/CAP/blob/main/EinTrust%20%20(2).png?raw=true", width=180)
     st.header("Admin Dashboard")
-    st.subheader("Add New Course")
-    with st.form("add_course_form"):
-        title = st.text_input("Course Title")
-        subtitle = st.text_input("Course Subtitle")
-        description = st.text_area("Course Description")
-        price_type = st.selectbox("Course Type", ["Free","Paid"])
-        price = 0
-        if price_type=="Paid":
-            price = st.number_input("Price (INR)", min_value=1)
-        submitted = st.form_submit_button("Add Course")
-        if submitted:
-            add_course(title, subtitle, description, price)
-            st.success("Course added successfully!")
 
-    st.write("---")
-    st.subheader("Add Lessons to a Course")
-    courses = get_courses()
-    if courses:
-        course_dict = {f"{c[1]}": c[0] for c in courses}
-        course_name = st.selectbox("Select Course", list(course_dict.keys()))
-        course_id = course_dict[course_name]
-        with st.form("add_lesson_form"):
-            lesson_title = st.text_input("Lesson Title")
-            lesson_desc = st.text_area("Lesson Description")
-            lesson_type = st.selectbox("Lesson Type", ["Video","PDF","PPT","Link"])
-            uploaded_file = None
-            link = ""
-            if lesson_type in ["Video","PDF","PPT"]:
-                uploaded_file = st.file_uploader(f"Upload {lesson_type}")
-            else:
-                link = st.text_input("Paste link here")
-            submitted_lesson = st.form_submit_button("Add Lesson")
-            if submitted_lesson:
-                file_bytes = convert_file_to_bytes(uploaded_file)
-                add_lesson(course_id, lesson_title, lesson_desc, lesson_type, file_bytes, link)
-                st.success("Lesson added successfully!")
+    admin_page = st.radio("Navigate", ["Dashboard","All Students","All Courses","Logout"], horizontal=True)
 
-    st.write("---")
-    st.subheader("All Courses")
-    display_courses_grid(courses, show_lessons=True)
-    if st.button("Logout"):
+    if admin_page == "Dashboard":
+        total_students = c.execute("SELECT COUNT(*) FROM students").fetchone()[0]
+        total_courses = c.execute("SELECT COUNT(*) FROM courses").fetchone()[0]
+        total_lessons = c.execute("SELECT COUNT(*) FROM lessons").fetchone()[0]
+        st.subheader("Summary")
+        st.write(f"**Total Students:** {total_students}")
+        st.write(f"**Total Courses:** {total_courses}")
+        st.write(f"**Total Lessons:** {total_lessons}")
+
+    elif admin_page == "All Students":
+        st.subheader("All Students Data")
+        students = c.execute("SELECT student_id, full_name, email, gender, profession, institution FROM students").fetchall()
+        for s in students:
+            st.write(f"ID: {s[0]}, Name: {s[1]}, Email: {s[2]}, Gender: {s[3]}, Profession: {s[4]}, Institution: {s[5]}")
+
+    elif admin_page == "All Courses":
+        st.subheader("Add Course")
+        with st.form("add_course_form"):
+            course_title = st.text_input("Course Title")
+            course_subtitle = st.text_input("Course Subtitle")
+            course_description = st.text_area("Course Description")
+            course_type = st.selectbox("Course Type", ["Free","Paid"])
+            course_price = 0
+            if course_type=="Paid":
+                course_price = st.number_input("Price (INR)", min_value=1)
+            submit_course = st.form_submit_button("Add Course")
+            if submit_course:
+                add_course(course_title, course_subtitle, course_description, course_price)
+                st.success("Course added successfully!")
+
+        st.write("---")
+        courses = get_courses()
+        if courses:
+            st.subheader("Add Lessons to a Course")
+            course_dict = {f"{c[1]}": c[0] for c in courses}
+            selected_course_name = st.selectbox("Select Course for Lesson", list(course_dict.keys()))
+            selected_course_id = course_dict[selected_course_name]
+
+            with st.form("add_lesson_form"):
+                lesson_title = st.text_input("Lesson Title")
+                lesson_description = st.text_area("Lesson Description")
+                lesson_type = st.selectbox("Lesson Type", ["Video","PDF","PPT","Link"])
+                uploaded_file = None
+                lesson_link = ""
+                if lesson_type in ["Video","PDF","PPT"]:
+                    uploaded_file = st.file_uploader(f"Upload {lesson_type}")
+                else:
+                    lesson_link = st.text_input("Paste Link Here")
+                submit_lesson = st.form_submit_button("Add Lesson")
+                if submit_lesson:
+                    file_bytes = convert_file_to_bytes(uploaded_file)
+                    add_lesson(selected_course_id, lesson_title, lesson_description, lesson_type, file_bytes, lesson_link)
+                    st.success(f"Lesson '{lesson_title}' added to course '{selected_course_name}' successfully!")
+
+            st.write("---")
+            st.subheader("All Courses and Lessons")
+            for c in courses:
+                st.markdown(f"### {c[1]} ({'Free' if c[4]==0 else f'₹{c[4]:,.0f}'})")
+                st.write(c[3])
+                lessons = get_lessons(c[0])
+                if lessons:
+                    for l in lessons:
+                        st.write(f"- {l[2]} ({l[4]}) : {l[3]}")
+
+    elif admin_page == "Logout":
         st.session_state.clear()
         st.experimental_rerun()
 
