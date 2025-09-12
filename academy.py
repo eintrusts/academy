@@ -19,6 +19,18 @@ c.execute('''CREATE TABLE IF NOT EXISTS courses (
     price REAL
 )''')
 
+# Lessons table
+c.execute('''CREATE TABLE IF NOT EXISTS lessons (
+    lesson_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    course_id INTEGER,
+    title TEXT,
+    description TEXT,
+    lesson_type TEXT,
+    file BLOB,
+    link TEXT,
+    FOREIGN KEY(course_id) REFERENCES courses(course_id)
+)''')
+
 # Students table
 c.execute('''CREATE TABLE IF NOT EXISTS students (
     student_id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -54,16 +66,16 @@ def is_valid_password(password):
             re.search(r"[0-9]", password) and
             re.search(r"[!@#$%^&*(),.?\":{}|<>]", password))
 
-def convert_image_to_bytes(uploaded_file):
+def convert_file_to_bytes(uploaded_file):
     if uploaded_file is not None:
-        img = Image.open(uploaded_file)
-        buf = io.BytesIO()
-        img.save(buf, format="PNG")
-        return buf.getvalue()
+        return uploaded_file.read()
     return None
 
 def get_courses():
     return c.execute("SELECT * FROM courses ORDER BY course_id DESC").fetchall()
+
+def get_lessons(course_id):
+    return c.execute("SELECT * FROM lessons WHERE course_id=? ORDER BY lesson_id ASC", (course_id,)).fetchall()
 
 def add_student(full_name, email, password, gender, profession, institution, profile_picture):
     try:
@@ -89,6 +101,15 @@ def get_student_courses(student_id):
            FROM courses JOIN student_courses 
            ON courses.course_id = student_courses.course_id 
            WHERE student_courses.student_id=?''', (student_id,)).fetchall()
+
+def add_course(title, subtitle, description, price):
+    c.execute("INSERT INTO courses (title, subtitle, description, price) VALUES (?,?,?,?)", (title, subtitle, description, price))
+    conn.commit()
+
+def add_lesson(course_id, title, description, lesson_type, file, link):
+    c.execute("INSERT INTO lessons (course_id, title, description, lesson_type, file, link) VALUES (?,?,?,?,?,?)",
+              (course_id, title, description, lesson_type, file, link))
+    conn.commit()
 
 # ---------------------------
 # Page Config
@@ -117,13 +138,12 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ---------------------------
-# Course Display Function (Responsive Grid)
+# Course Display Function
 # ---------------------------
-def display_courses_grid(courses, enroll_option=False, student_id=None):
+def display_courses_grid(courses, enroll_option=False, student_id=None, show_lessons=False):
     if not courses:
         st.info("No courses available.")
         return
-    # Use 2-column layout on wide, 1-column on small screens (streamlit handles)
     cols = st.columns(2)
     for idx, course in enumerate(courses):
         with cols[idx % 2]:
@@ -136,9 +156,15 @@ def display_courses_grid(courses, enroll_option=False, student_id=None):
             </div>
             """, unsafe_allow_html=True)
             if enroll_option and student_id:
-                if st.button(f"Enroll in {course[1]}", key=f"enroll_{course[0]}", help="", args=(), kwargs={}, type="primary"):
+                if st.button(f"Enroll in {course[1]}", key=f"enroll_{course[0]}", use_container_width=True):
                     enroll_student_in_course(student_id, course[0])
                     st.success(f"Enrolled in {course[1]}!")
+            if show_lessons:
+                lessons = get_lessons(course[0])
+                if lessons:
+                    st.write("Lessons:")
+                    for l in lessons:
+                        st.write(f"- {l[2]} ({l[4]})")
 
 # ---------------------------
 # PAGES
@@ -160,14 +186,14 @@ def page_signup():
         gender = st.selectbox("Gender", ["Male","Female","Other"])
         profession = st.text_input("Profession")
         institution = st.text_input("Institution")
-        submitted = st.form_submit_button("Submit", use_container_width=True)
+        submitted = st.form_submit_button("Submit")
         if submitted:
             if not is_valid_email(email):
                 st.error("Enter a valid email address.")
             elif not is_valid_password(password):
                 st.error("Password must have 8+ chars, 1 uppercase, 1 number, 1 special char.")
             else:
-                img_bytes = convert_image_to_bytes(profile_picture)
+                img_bytes = convert_file_to_bytes(profile_picture)
                 success = add_student(full_name, email, password, gender, profession, institution, img_bytes)
                 if success:
                     st.success("Profile created successfully! Please login.")
@@ -180,7 +206,7 @@ def page_login():
     st.header("Student Login")
     email = st.text_input("Email ID", key="login_email")
     password = st.text_input("Password", type="password", key="login_pass")
-    if st.button("Login", use_container_width=True):
+    if st.button("Login"):
         student = authenticate_student(email, password)
         if student:
             st.session_state["student"] = student
@@ -204,8 +230,8 @@ def page_student_dashboard():
         st.write("---")
         st.subheader("Your Enrolled Courses")
         courses = get_student_courses(student[0])
-        display_courses_grid(courses)
-        if st.button("Logout", use_container_width=True):
+        display_courses_grid(courses, show_lessons=True)
+        if st.button("Logout"):
             st.session_state.clear()
             st.experimental_rerun()
     else:
@@ -215,7 +241,7 @@ def page_admin():
     st.image("https://github.com/eintrusts/CAP/blob/main/EinTrust%20%20(2).png?raw=true", width=180)
     st.header("Admin Login")
     admin_pass = st.text_input("Enter Admin Password", type="password")
-    if st.button("Login as Admin", use_container_width=True):
+    if st.button("Login as Admin"):
         if admin_pass == "eintrust2025":
             st.session_state["page"] = "admin_dashboard"
             st.experimental_rerun()
@@ -225,13 +251,47 @@ def page_admin():
 def page_admin_dashboard():
     st.image("https://github.com/eintrusts/CAP/blob/main/EinTrust%20%20(2).png?raw=true", width=180)
     st.header("Admin Dashboard")
-    st.subheader("All Students")
-    students = c.execute("SELECT full_name,email,profession,institution FROM students").fetchall()
-    for s in students: st.write(s)
-    st.subheader("All Courses")
+    st.subheader("Add New Course")
+    with st.form("add_course_form"):
+        title = st.text_input("Course Title")
+        subtitle = st.text_input("Course Subtitle")
+        description = st.text_area("Course Description")
+        price_type = st.selectbox("Course Type", ["Free","Paid"])
+        price = 0
+        if price_type=="Paid":
+            price = st.number_input("Price (INR)", min_value=1)
+        submitted = st.form_submit_button("Add Course")
+        if submitted:
+            add_course(title, subtitle, description, price)
+            st.success("Course added successfully!")
+
+    st.write("---")
+    st.subheader("Add Lessons to a Course")
     courses = get_courses()
-    display_courses_grid(courses)
-    if st.button("Logout", use_container_width=True):
+    if courses:
+        course_dict = {f"{c[1]}": c[0] for c in courses}
+        course_name = st.selectbox("Select Course", list(course_dict.keys()))
+        course_id = course_dict[course_name]
+        with st.form("add_lesson_form"):
+            lesson_title = st.text_input("Lesson Title")
+            lesson_desc = st.text_area("Lesson Description")
+            lesson_type = st.selectbox("Lesson Type", ["Video","PDF","PPT","Link"])
+            uploaded_file = None
+            link = ""
+            if lesson_type in ["Video","PDF","PPT"]:
+                uploaded_file = st.file_uploader(f"Upload {lesson_type}")
+            else:
+                link = st.text_input("Paste link here")
+            submitted_lesson = st.form_submit_button("Add Lesson")
+            if submitted_lesson:
+                file_bytes = convert_file_to_bytes(uploaded_file)
+                add_lesson(course_id, lesson_title, lesson_desc, lesson_type, file_bytes, link)
+                st.success("Lesson added successfully!")
+
+    st.write("---")
+    st.subheader("All Courses")
+    display_courses_grid(courses, show_lessons=True)
+    if st.button("Logout"):
         st.session_state.clear()
         st.experimental_rerun()
 
