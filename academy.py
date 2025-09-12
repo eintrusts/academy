@@ -105,6 +105,7 @@ def get_student_courses(student_id):
 def add_course(title, subtitle, description, price):
     c.execute("INSERT INTO courses (title, subtitle, description, price) VALUES (?,?,?,?)", (title, subtitle, description, price))
     conn.commit()
+    return c.lastrowid
 
 def add_lesson(course_id, title, description, lesson_type, file, link):
     c.execute("INSERT INTO lessons (course_id, title, description, lesson_type, file, link) VALUES (?,?,?,?,?,?)",
@@ -134,6 +135,7 @@ st.markdown("""
         .course-desc {font-size: 14px; color: #cccccc;}
         .admin-toggle button {background-color: #2e2e2e !important; color: #ffffff !important; border-radius: 8px !important; padding: 10px 16px !important; margin-right: 10px;}
         .admin-toggle button:hover {background-color: #4CAF50 !important; color: white !important;}
+        .section-header {border-bottom: 1px solid #333333; padding-bottom: 8px; margin-bottom: 10px; font-size: 20px;}
     </style>
 """, unsafe_allow_html=True)
 
@@ -271,10 +273,11 @@ def page_admin_dashboard():
     st.image("https://github.com/eintrusts/CAP/blob/main/EinTrust%20%20(2).png?raw=true", width=180)
     st.header("Admin Dashboard")
 
-    # Home-style toggle buttons
+    # Admin toggle buttons
     admin_pages = ["Dashboard", "Students", "Courses", "Logout"]
     if "admin_page" not in st.session_state:
         st.session_state["admin_page"] = "Dashboard"
+
     cols = st.columns(len(admin_pages))
     for idx, p in enumerate(admin_pages):
         if cols[idx].button(p):
@@ -298,43 +301,46 @@ def page_admin_dashboard():
             st.write(f"ID: {s[0]}, Name: {s[1]}, Email: {s[2]}, Gender: {s[3]}, Profession: {s[4]}, Institution: {s[5]}")
 
     elif page == "Courses":
-        st.subheader("All Courses and Add Course/Lesson")
-        courses = get_courses()
-        st.write("### Add Course")
+        st.subheader("Courses Management")
+
+        # Add Course Form
+        st.markdown("### Add New Course")
         with st.form("add_course_form"):
-            title = st.text_input("Course Title")
-            subtitle = st.text_input("Course Subtitle")
-            description = st.text_area("Course Description")
-            price_type = st.selectbox("Course Type", ["Free","Paid"])
-            price = 0
-            if price_type=="Paid":
-                price = st.number_input("Price (INR)", min_value=1)
+            course_title = st.text_input("Course Title")
+            course_subtitle = st.text_input("Course Subtitle")
+            course_desc = st.text_area("Course Description")
+            course_type = st.selectbox("Course Type", ["Free", "Paid"])
+            course_price = 0
+            if course_type == "Paid":
+                course_price = st.number_input("Enter Price in INR", min_value=1)
             submit_course = st.form_submit_button("Add Course")
             if submit_course:
-                add_course(title, subtitle, description, price)
-                st.success("Course added successfully!")
+                new_course_id = add_course(course_title, course_subtitle, course_desc, course_price)
+                st.success(f"Course '{course_title}' added successfully!")
 
+        # Add Lesson Form
+        courses = get_courses()
         if courses:
-            st.write("---")
-            st.write("### Add Lessons to a Course")
+            st.markdown("---")
+            st.markdown("### Add Lesson to Existing Course")
             course_dict = {c[1]: c[0] for c in courses}
             selected_course_name = st.selectbox("Select Course", list(course_dict.keys()))
             selected_course_id = course_dict[selected_course_name]
             with st.form("add_lesson_form"):
                 lesson_title = st.text_input("Lesson Title")
-                lesson_description = st.text_area("Lesson Description")
-                lesson_type = st.selectbox("Lesson Type", ["Video","PDF","PPT","Link"])
+                lesson_desc = st.text_area("Lesson Description")
+                lesson_type = st.selectbox("Lesson Type", ["Video", "PDF", "PPT", "Link"])
                 uploaded_file = None
                 lesson_link = ""
-                if lesson_type in ["Video","PDF","PPT"]:
+                if lesson_type in ["Video", "PDF", "PPT"]:
                     uploaded_file = st.file_uploader(f"Upload {lesson_type}")
                 else:
                     lesson_link = st.text_input("Paste Link Here")
                 submit_lesson = st.form_submit_button("Add Lesson")
                 if submit_lesson:
                     file_bytes = convert_file_to_bytes(uploaded_file)
-                    add_lesson(selected_course_id, lesson_title, lesson_description, lesson_type, file_bytes, lesson_link)
-                    st.success(f"Lesson '{lesson_title}' added to course '{selected_course_name}' successfully!")
+                    add_lesson(selected_course_id, lesson_title, lesson_desc, lesson_type, file_bytes, lesson_link)
+                    st.success(f"Lesson '{lesson_title}' added to '{selected_course_name}' successfully!")
 
     elif page == "Logout":
         st.session_state.clear()
