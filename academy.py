@@ -1,16 +1,15 @@
 import streamlit as st
 import sqlite3
-import hashlib
+from datetime import datetime
+from fpdf import FPDF
 
-# -----------------------------
-# DATABASE SETUP
-# -----------------------------
+# -------------------
+# Database setup
+# -------------------
 conn = sqlite3.connect("eintrust_academy.db", check_same_thread=False)
 c = conn.cursor()
 
-# -----------------------------
-# TABLES
-# -----------------------------
+# Students
 c.execute("""
 CREATE TABLE IF NOT EXISTS students (
     student_id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -18,25 +17,27 @@ CREATE TABLE IF NOT EXISTS students (
     email TEXT UNIQUE NOT NULL,
     password TEXT NOT NULL,
     sex TEXT,
-    profession TEXT NOT NULL,
+    profession TEXT,
     institution TEXT,
-    mobile TEXT NOT NULL,
+    mobile TEXT,
     profile_pic TEXT
 )
 """)
 
+# Courses
 c.execute("""
 CREATE TABLE IF NOT EXISTS courses (
     course_id INTEGER PRIMARY KEY AUTOINCREMENT,
-    title TEXT UNIQUE,
+    title TEXT,
     subtitle TEXT,
     description TEXT,
-    price REAL DEFAULT 0,
-    category TEXT DEFAULT 'General',
-    banner_path TEXT DEFAULT ''
+    price REAL,
+    category TEXT,
+    banner_path TEXT
 )
 """)
 
+# Lessons
 c.execute("""
 CREATE TABLE IF NOT EXISTS lessons (
     lesson_id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -48,154 +49,258 @@ CREATE TABLE IF NOT EXISTS lessons (
 )
 """)
 
+# Enrollments
 c.execute("""
 CREATE TABLE IF NOT EXISTS enrollments (
     enroll_id INTEGER PRIMARY KEY AUTOINCREMENT,
     student_id INTEGER,
     course_id INTEGER,
-    progress REAL DEFAULT 0,
-    completed INTEGER DEFAULT 0,
+    progress INTEGER DEFAULT 0,
     FOREIGN KEY(student_id) REFERENCES students(student_id),
     FOREIGN KEY(course_id) REFERENCES courses(course_id)
 )
 """)
+
+# Certificates
+c.execute("""
+CREATE TABLE IF NOT EXISTS certificates (
+    cert_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    student_id INTEGER,
+    course_id INTEGER,
+    cert_file TEXT,
+    FOREIGN KEY(student_id) REFERENCES students(student_id),
+    FOREIGN KEY(course_id) REFERENCES courses(course_id)
+)
+""")
+
 conn.commit()
 
-# -----------------------------
-# INSERT DUMMY DATA ONLY IF EMPTY
-# -----------------------------
+# -------------------
+# Insert dummy data
+# -------------------
 def insert_dummy_data():
-    existing = c.execute("SELECT COUNT(*) FROM courses").fetchone()[0]
+    # Check if courses table already has data
+    try:
+        existing = c.execute("SELECT COUNT(*) FROM courses").fetchone()[0]
+    except:
+        existing = 0
     if existing > 0:
         return  # Already has data
 
     courses = [
-        {"title":"Sustainability Basics","subtitle":"Intro to Sustainability","description":"Learn fundamentals of sustainability and eco-friendly practices.","price":499.0,"category":"Sustainability","banner_path":"https://via.placeholder.com/350x150"},
-        {"title":"Climate Change Fundamentals","subtitle":"Understand Climate Change","description":"Explore causes, impacts, and mitigation strategies of climate change.","price":599.0,"category":"Climate Change","banner_path":"https://via.placeholder.com/350x150"},
-        {"title":"ESG & Corporate Responsibility","subtitle":"Environmental, Social & Governance","description":"Dive into ESG concepts, reporting standards, and real-world case studies.","price":799.0,"category":"ESG","banner_path":"https://via.placeholder.com/350x150"}
+        {
+            "title": "Sustainability Basics",
+            "subtitle": "Intro to Sustainability",
+            "description": "Learn fundamentals of sustainability and eco-friendly practices.",
+            "price": 499.0,
+            "category": "Sustainability",
+            "banner_path": "https://via.placeholder.com/350x150"
+        },
+        {
+            "title": "Climate Change Fundamentals",
+            "subtitle": "Understand Climate Change",
+            "description": "Explore causes, impacts, and mitigation strategies of climate change.",
+            "price": 599.0,
+            "category": "Climate Change",
+            "banner_path": "https://via.placeholder.com/350x150"
+        },
+        {
+            "title": "ESG & Corporate Responsibility",
+            "subtitle": "Environmental, Social & Governance",
+            "description": "Dive into ESG concepts, reporting standards, and real-world case studies.",
+            "price": 799.0,
+            "category": "ESG",
+            "banner_path": "https://via.placeholder.com/350x150"
+        }
     ]
 
     for course in courses:
-        c.execute("""
-            INSERT OR IGNORE INTO courses (title, subtitle, description, price, category, banner_path)
-            VALUES (?,?,?,?,?,?)
-        """, (course['title'], course['subtitle'], course['description'], float(course['price']), course['category'], course['banner_path']))
+        try:
+            c.execute("""
+                INSERT INTO courses (title, subtitle, description, price, category, banner_path)
+                VALUES (?,?,?,?,?,?)
+            """, (
+                course['title'] or "No Title",
+                course['subtitle'] or "",
+                course['description'] or "",
+                float(course['price'] or 0),
+                course['category'] or "General",
+                course['banner_path'] or ""
+            ))
+        except Exception as e:
+            print("Error inserting course:", course['title'], e)
+
     conn.commit()
 
     # Dummy lessons
-    lessons = {
-        "Sustainability Basics": [("Intro","text",""), ("Global Practices","pdf",""), ("Local Action","video","")],
-        "Climate Change Fundamentals": [("Causes","text",""), ("Impacts","pdf",""), ("Mitigation","video","")],
-        "ESG & Corporate Responsibility": [("What is ESG","text",""), ("Reporting","pdf",""), ("Case Studies","video","")]
-    }
-
-    for course_title, les in lessons.items():
-        course_row = c.execute("SELECT course_id FROM courses WHERE title=?", (course_title,)).fetchone()
-        if course_row:
-            course_id = course_row[0]
-            for title, ctype, path in les:
-                c.execute("""
-                    INSERT OR IGNORE INTO lessons (course_id,title,content_type,content_path)
-                    VALUES (?,?,?,?)
-                """, (course_id, title, ctype, path))
+    course_ids = c.execute("SELECT course_id FROM courses").fetchall()
+    for cid in course_ids:
+        course_id = cid[0]
+        for i in range(1, 4):  # 3 lessons each
+            c.execute("""
+                INSERT INTO lessons (course_id, title, content_type, content_path)
+                VALUES (?,?,?,?)
+            """, (course_id, f"Lesson {i}", "video", f"https://sample-videos.com/video{i}.mp4"))
     conn.commit()
 
 insert_dummy_data()
 
-# -----------------------------
-# SESSION STATE
-# -----------------------------
-if 'student_id' not in st.session_state: st.session_state.student_id = None
-if 'page' not in st.session_state: st.session_state.page = "home"
+# -------------------
+# Utility functions
+# -------------------
+def format_inr(amount):
+    return f"₹{amount:,.2f}"
 
-# -----------------------------
-# STYLING
-# -----------------------------
-st.set_page_config(page_title="EinTrust Academy", layout="wide", page_icon="🌱")
-st.markdown("""
-<style>
-body, .stApp {background-color: #121212; color: #f0f0f0; font-family: 'Arial', sans-serif;}
-a {color: #00bfff; text-decoration:none;}
-a:hover {color: #009acd;}
-.course-card:hover {background-color:#1e1e1e; transform: scale(1.02); transition: 0.3s;}
-.top-nav {background-color:#1f1f1f; padding:10px 20px; position:sticky; top:0; z-index:9999; display:flex; align-items:center; justify-content:space-between; border-bottom:1px solid #333;}
-.nav-center {display:flex; gap:15px; align-items:center;}
-.nav-link {margin-right:15px; color:#f0f0f0; font-weight:bold; cursor:pointer;}
-.nav-link:hover {color:#00bfff;}
-.btn-hover {background-color:#00bfff; color:#000; padding:6px 15px; border-radius:5px; font-weight:bold;}
-.btn-hover:hover {background-color:#009acd; color:#fff; cursor:pointer;}
-</style>
-""", unsafe_allow_html=True)
+def generate_certificate(student_name, course_title):
+    pdf = FPDF()
+    pdf.add_page()
+    pdf.set_font("Arial", 'B', 24)
+    pdf.cell(0, 50, "Certificate of Completion", align="C", ln=1)
+    pdf.set_font("Arial", '', 16)
+    pdf.multi_cell(0, 10, f"This certifies that {student_name} has successfully completed the course '{course_title}'.", align="C")
+    filename = f"certificate_{student_name.replace(' ', '_')}_{course_title.replace(' ', '_')}.pdf"
+    pdf.output(filename)
+    return filename
 
-# -----------------------------
-# UTILITIES
-# -----------------------------
-def hash_password(pw): return hashlib.sha256(pw.encode()).hexdigest()
-def verify_password(pw, hashed): return hash_password(pw) == hashed
+# -------------------
+# Session state
+# -------------------
+if "student_id" not in st.session_state:
+    st.session_state.student_id = None
+if "student_name" not in st.session_state:
+    st.session_state.student_name = ""
+if "admin_logged_in" not in st.session_state:
+    st.session_state.admin_logged_in = False
 
-# -----------------------------
-# TOP NAVIGATION
-# -----------------------------
+# -------------------
+# Pages
+# -------------------
+
+# Top Navigation Bar
 def top_nav():
-    try:
-        c.execute("SELECT DISTINCT category FROM courses")
-        categories = [row[0] for row in c.fetchall() if row[0] is not None]
-    except:
-        categories = []
-    categories = ["All"] + categories
+    st.markdown(
+        """
+        <style>
+        .nav-bar{
+            background-color:#111;
+            padding:10px;
+            display:flex;
+            justify-content:space-between;
+            align-items:center;
+            color:white;
+        }
+        .nav-bar a{
+            color:white;
+            text-decoration:none;
+            margin:0 10px;
+            font-weight:bold;
+        }
+        .nav-bar a:hover{
+            color:#00ffcc;
+        }
+        </style>
+        <div class="nav-bar">
+            <div><img src="https://github.com/eintrusts/CAP/blob/main/EinTrust%20%20(2).png?raw=true" height="50"></div>
+            <div>
+                <a href="#">Browse Courses</a>
+                <a href="#">About</a>
+            </div>
+            <div>
+                <a href="#" onclick="window.location.href='#login'">Login</a>
+            </div>
+        </div>
+        """, unsafe_allow_html=True
+    )
 
-    col1, col2, col3 = st.columns([2,5,2])
-    with col1:
-        st.image("https://github.com/eintrusts/CAP/blob/main/EinTrust%20%20(2).png", width=180)
-    with col2:
-        st.markdown("""
-            <span class="nav-link" onclick="window.alert('Browse Courses')">Browse Courses</span>
-            <span class="nav-link" onclick="window.alert('About')">About</span>
-            <span class="nav-link" onclick="window.alert('Contact')">Contact</span>
-        """, unsafe_allow_html=True)
-        search_query = st.text_input("Search for anything", key="search")
-        category_filter = st.selectbox("Category", categories, key="cat_filter")
-    with col3:
-        if st.session_state.student_id is None:
-            if st.button("Login", key="login_btn_top"): st.session_state.page = "login"
-    return search_query, category_filter
+# Home / Browse Courses
+def home_page():
+    st.title("EinTrust Academy")
+    st.subheader("Learn Sustainability, Climate Change & ESG like a pro!")
 
-# -----------------------------
-# DISPLAY COURSES
-# -----------------------------
-def display_courses(search_query="", category_filter="All"):
-    query = "SELECT course_id, title, subtitle, description, price, category, banner_path FROM courses"
-    params = []
-    if category_filter != "All":
-        query += " WHERE category=?"
-        params.append(category_filter)
-    courses = c.execute(query, params).fetchall()
-    if search_query:
-        courses = [crs for crs in courses if search_query.lower() in crs[1].lower()]
-    for crs in courses:
+    courses = c.execute("SELECT course_id,title,subtitle,description,price,banner_path FROM courses ORDER BY course_id DESC").fetchall()
+    
+    for course in courses:
+        course_id, title, subtitle, desc, price, banner = course
         st.markdown(f"""
-        <div class="course-card" style="padding:15px; margin:10px; border:1px solid #333; border-radius:10px;">
-            <img src="{crs[6]}" width="100%">
-            <h3>{crs[1]}</h3>
-            <h5>{crs[2]}</h5>
-            <p>{crs[3]}</p>
-            <b>₹{crs[4]:,.0f}</b>
-            <br><button class="btn-hover" onclick="window.alert('Enroll/Login first')">Preview / Enroll</button>
+        <div style='border:1px solid #333; padding:10px; margin:10px; border-radius:10px; background-color:#222; color:white'>
+            <img src="{banner}" width="100%">
+            <h3>{title} - {subtitle}</h3>
+            <p>{desc}</p>
+            <p><b>{format_inr(price)}</b></p>
+            <a href="#course_{course_id}" style='color:#00ffcc; font-weight:bold;'>Preview / Enroll</a>
         </div>
         """, unsafe_allow_html=True)
 
-# -----------------------------
-# HOME PAGE
-# -----------------------------
-def home_page():
-    search_query, category_filter = top_nav()
-    display_courses(search_query, category_filter)
-    st.markdown("<div style='text-align:center; padding:10px;'>© 2025 EinTrust Academy</div>", unsafe_allow_html=True)
+# Student Signup/Login
+def student_signup():
+    st.subheader("Create Your Profile")
+    with st.form("signup_form"):
+        full_name = st.text_input("Full Name*")
+        email = st.text_input("Email*", type="email")
+        password = st.text_input("Password* (8+ chars, 1 uppercase, 1 number, 1 special)", type="password")
+        sex = st.selectbox("Sex", ["Male", "Female", "Prefer not to say"])
+        profession = st.selectbox("Profession*", ["Student", "Working Professional"])
+        institution = st.text_input("Institution")
+        mobile = st.text_input("Mobile*")
+        profile_pic = st.text_input("Profile Picture URL (optional)")
+        submit = st.form_submit_button("Create Profile")
+        if submit:
+            try:
+                c.execute("""
+                    INSERT INTO students (full_name,email,password,sex,profession,institution,mobile,profile_pic)
+                    VALUES (?,?,?,?,?,?,?,?)
+                """, (full_name,email,password,sex,profession,institution,mobile,profile_pic))
+                conn.commit()
+                st.success("Profile created! Please login now.")
+            except:
+                st.error("Email already exists!")
+            st.experimental_rerun()
 
-# -----------------------------
-# MAIN
-# -----------------------------
+def student_login():
+    st.subheader("Student Login")
+    with st.form("login_form"):
+        email = st.text_input("Email", type="email")
+        password = st.text_input("Password", type="password")
+        submit = st.form_submit_button("Login")
+        if submit:
+            user = c.execute("SELECT student_id, full_name FROM students WHERE email=? AND password=?", (email,password)).fetchone()
+            if user:
+                st.session_state.student_id = user[0]
+                st.session_state.student_name = user[1]
+                st.success(f"Welcome {user[1]}!")
+            else:
+                st.error("Incorrect Email/Password")
+
+def admin_login():
+    st.subheader("Admin Login")
+    with st.form("admin_form"):
+        pwd = st.text_input("Enter Password", type="password")
+        submit = st.form_submit_button("Login")
+        if submit:
+            if pwd=="admin123":
+                st.session_state.admin_logged_in = True
+                st.success("Admin logged in!")
+            else:
+                st.error("Incorrect password!")
+
+# -------------------
+# Main app
+# -------------------
 def main():
-    if st.session_state.page == "home": home_page()
+    st.set_page_config(page_title="EinTrust Academy", layout="wide")
+    st.markdown("<body style='background-color:#111;color:white'>", unsafe_allow_html=True)
+    
+    top_nav()
+    
+    # Home Page / Courses
+    home_page()
+    
+    # For simplicity, login/signup via sidebar
+    if st.sidebar.button("Student Signup"):
+        student_signup()
+    if st.sidebar.button("Student Login"):
+        student_login()
+    if st.sidebar.button("Admin Login"):
+        admin_login()
 
 main()
