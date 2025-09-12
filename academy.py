@@ -74,41 +74,67 @@ def authenticate_student(email, password):
 # ---------------------------
 st.set_page_config(page_title="EinTrust Academy", layout="wide")
 
-# Custom CSS
+# ---------------------------
+# Custom Dark Theme CSS
+# ---------------------------
 st.markdown("""
     <style>
-        body {background-color: #0e1117; color: #fafafa;}
-        .stTabs [role="tablist"] {justify-content: center;}
-        .stTabs [role="tab"] {font-size: 18px; padding: 12px;}
+        body {
+            background-color: #0d0f12;
+            color: #e0e0e0;
+        }
+        .stApp {
+            background-color: #0d0f12;
+            color: #e0e0e0;
+        }
+        .stTextInput > div > div > input,
+        .stSelectbox > div > div > select,
+        .stTextArea > div > textarea {
+            background-color: #1e1e1e;
+            color: #f5f5f5;
+            border: 1px solid #333333;
+            border-radius: 6px;
+        }
+        .stButton button {
+            background-color: #4CAF50;
+            color: white;
+            border-radius: 8px;
+            border: none;
+            padding: 8px 16px;
+        }
+        .stButton button:hover {
+            background-color: #45a049;
+            color: #ffffff;
+        }
         .course-card {
-            background: #1e1e1e;
+            background: #1c1c1c;
             border-radius: 12px;
             padding: 16px;
             margin: 12px 0;
-            box-shadow: 0px 4px 10px rgba(0,0,0,0.4);
+            box-shadow: 0px 4px 10px rgba(0,0,0,0.6);
         }
-        .course-title {font-size: 22px; font-weight: bold;}
-        .course-subtitle {font-size: 16px; color: #cccccc;}
-        .course-desc {font-size: 14px; color: #bbbbbb;}
-        .enroll-btn {
-            background: #4CAF50;
-            color: white;
-            padding: 8px 16px;
-            border-radius: 6px;
-            text-align: center;
-            cursor: pointer;
+        .course-title {
+            font-size: 22px;
+            font-weight: bold;
+            color: #f0f0f0;
         }
-        .enroll-btn:hover {background: #45a049;}
+        .course-subtitle {
+            font-size: 16px;
+            color: #b0b0b0;
+        }
+        .course-desc {
+            font-size: 14px;
+            color: #cccccc;
+        }
     </style>
 """, unsafe_allow_html=True)
 
 # ---------------------------
 # PAGES
 # ---------------------------
-
 def page_home():
     st.image("https://github.com/eintrusts/CAP/blob/main/EinTrust%20%20(2).png?raw=true", width=180)
-    st.header("Available Courses")
+    st.header("Courses")
     courses = get_courses()
     if not courses:
         st.info("No courses available yet.")
@@ -148,7 +174,7 @@ def page_signup():
                 img_bytes = convert_image_to_bytes(profile_picture)
                 success = add_student(full_name, email, password, gender, profession, institution, img_bytes)
                 if success:
-                    st.success("Profile created successfully! Please login.")
+                    st.success("✅ Profile created successfully! Please login.")
                     st.session_state["page"] = "login"
                 else:
                     st.error("Email already registered. Please login.")
@@ -161,19 +187,19 @@ def page_login():
     if st.button("Login"):
         student = authenticate_student(email, password)
         if student:
-            st.success("Login successful!")
+            st.success("✅ Login successful!")
             st.session_state["student"] = student
             st.session_state["page"] = "dashboard"
         else:
-            st.error("Invalid credentials.")
+            st.error("❌ Invalid credentials.")
 
 def page_dashboard():
     st.image("https://github.com/eintrusts/CAP/blob/main/EinTrust%20%20(2).png?raw=true", width=180)
     st.header("Student Dashboard")
     student = st.session_state.get("student")
     if student:
-        st.write(f"Welcome, {student[1]}!")
-        st.write("Your enrolled courses will appear here.")
+        st.write(f"Welcome, **{student[1]}** ")
+        st.write("Your enrolled courses will appear here soon.")
     else:
         st.warning("Please login first.")
 
@@ -182,20 +208,25 @@ def page_admin():
     st.header("Admin Login")
     admin_pass = st.text_input("Enter Admin Password", type="password")
     if st.button("Login as Admin"):
-        if admin_pass == "eintrust2025":  # Change this to secure password
+        if admin_pass == "eintrust2025":  # Change this for security
             st.success("Welcome Team")
             st.subheader("Dashboard")
-            st.write("Manage courses and students here.")
 
             st.subheader("All Students")
             students = c.execute("SELECT full_name,email,profession,institution FROM students").fetchall()
-            for s in students:
-                st.write(s)
+            if students:
+                for s in students:
+                    st.write(s)
+            else:
+                st.info("No students registered yet.")
 
             st.subheader("All Courses")
             courses = get_courses()
-            for c_row in courses:
-                st.write(c_row)
+            if courses:
+                for c_row in courses:
+                    st.write(c_row)
+            else:
+                st.info("No courses available.")
         else:
             st.error("Wrong admin password.")
 
