@@ -1,13 +1,12 @@
 import streamlit as st
 import sqlite3
 import hashlib
-from datetime import datetime
 
-# ------------------- DATABASE -------------------
+# ------------------- DATABASE CONNECTION -------------------
 conn = sqlite3.connect("academy.db", check_same_thread=False)
 c = conn.cursor()
 
-# ------------------- TABLE CREATION -------------------
+# ------------------- CREATE TABLES -------------------
 def create_tables():
     c.execute("""CREATE TABLE IF NOT EXISTS students (
                     student_id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -20,12 +19,12 @@ def create_tables():
                     sex TEXT,
                     profile_pic TEXT
                 )""")
-
+    
     c.execute("""CREATE TABLE IF NOT EXISTS admin (
                     admin_id INTEGER PRIMARY KEY,
                     password TEXT NOT NULL
                 )""")
-
+    
     c.execute("""CREATE TABLE IF NOT EXISTS courses (
                     course_id INTEGER PRIMARY KEY AUTOINCREMENT,
                     title TEXT,
@@ -35,7 +34,7 @@ def create_tables():
                     category TEXT,
                     banner_path TEXT
                 )""")
-
+    
     c.execute("""CREATE TABLE IF NOT EXISTS lessons (
                     lesson_id INTEGER PRIMARY KEY AUTOINCREMENT,
                     course_id INTEGER,
@@ -80,7 +79,7 @@ input {color:black;}
 </style>
 """, unsafe_allow_html=True)
 
-# ------------------- UTILITY -------------------
+# ------------------- UTILITIES -------------------
 def hash_password(password):
     return hashlib.sha256(password.encode()).hexdigest()
 
@@ -97,19 +96,22 @@ def top_nav():
 def home_page():
     top_nav()
     st.markdown("## Available Courses")
-    courses = c.execute("SELECT course_id,title,subtitle,description,price,banner_path FROM courses ORDER BY course_id DESC").fetchall()
-    if not courses:
-        st.info("No courses available. Admin can add courses from dashboard.")
-    for course in courses:
-        st.markdown(f"""
-        <div style='border:1px solid #555; padding:15px; margin-bottom:15px; border-radius:10px; background-color:#1C1C1C'>
-        <h3>{course[1]}</h3>
-        <p>{course[2]}</p>
-        <p>{course[3]}</p>
-        <p>Price: ₹{int(course[4]):,}</p>
-        <button onclick="window.location.href='/course_preview?course_id={course[0]}'" style='padding:5px 10px; border-radius:5px; background-color:#1E88E5; color:white;'>Preview & Enroll</button>
-        </div>
-        """, unsafe_allow_html=True)
+    try:
+        courses = c.execute("SELECT course_id,title,subtitle,description,price,banner_path FROM courses ORDER BY course_id DESC").fetchall()
+        if not courses:
+            st.info("No courses available yet. Admin can add courses.")
+        for course in courses:
+            st.markdown(f"""
+            <div style='border:1px solid #555; padding:15px; margin-bottom:15px; border-radius:10px; background-color:#1C1C1C'>
+            <h3>{course[1]}</h3>
+            <p>{course[2]}</p>
+            <p>{course[3]}</p>
+            <p>Price: ₹{int(course[4]):,}</p>
+            </div>
+            """, unsafe_allow_html=True)
+    except Exception as e:
+        st.error("Error loading courses. DB might be empty or corrupted.")
+        st.error(str(e))
 
 # ------------------- STUDENT SIGNUP -------------------
 def student_signup():
@@ -166,25 +168,34 @@ def admin_login():
 # ------------------- STUDENT DASHBOARD -------------------
 def student_dashboard():
     st.subheader("Student Dashboard")
-    student_id = st.session_state['student_id']
+    student_id = st.session_state.get('student_id')
+    if not student_id:
+        st.error("Student not logged in!")
+        return
     st.markdown("### Your Courses")
-    enrolled_courses = c.execute("""
-        SELECT DISTINCT courses.course_id,courses.title FROM courses
-        JOIN lessons ON courses.course_id = lessons.course_id
-        JOIN progress ON lessons.lesson_id = progress.lesson_id
-        WHERE progress.student_id=?
-    """,(student_id,)).fetchall()
-    if not enrolled_courses:
-        st.info("You have not enrolled in any courses yet.")
-    for course in enrolled_courses:
-        st.markdown(f"**{course[1]}**")
+    try:
+        enrolled_courses = c.execute("""
+            SELECT DISTINCT courses.course_id,courses.title FROM courses
+            JOIN lessons ON courses.course_id = lessons.course_id
+            JOIN progress ON lessons.lesson_id = progress.lesson_id
+            WHERE progress.student_id=?
+        """,(student_id,)).fetchall()
+        if not enrolled_courses:
+            st.info("You have not enrolled in any courses yet.")
+        for course in enrolled_courses:
+            st.markdown(f"**{course[1]}**")
+    except:
+        st.info("No progress yet.")
 
 # ------------------- ADMIN DASHBOARD -------------------
 def admin_dashboard():
     st.subheader("Admin Dashboard")
     st.markdown("### All Students")
-    students = c.execute("SELECT student_id, full_name, email, mobile, profession, institution, sex FROM students").fetchall()
-    st.table(students)
+    try:
+        students = c.execute("SELECT student_id, full_name, email, mobile, profession, institution, sex FROM students").fetchall()
+        st.table(students)
+    except:
+        st.info("No students registered yet.")
 
 # ------------------- APP MAIN -------------------
 if 'page' not in st.session_state:
