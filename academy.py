@@ -210,8 +210,8 @@ def page_admin():
     st.header("Admin Login")
     admin_pass = st.text_input("Enter Admin Password", type="password")
     if st.button("Login as Admin"):
-        if admin_pass == "admin123":  # Secure password recommended
-            st.success("Welcome Admin")
+        if admin_pass == "eintrust2025":  # Secure password recommended
+            st.success("Welcome Team")
             st.subheader("Manage Courses")
 
             # Add Course
