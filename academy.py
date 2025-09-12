@@ -10,7 +10,7 @@ import io
 conn = sqlite3.connect("academy.db", check_same_thread=False)
 c = conn.cursor()
 
-# Courses table
+# Courses
 c.execute('''CREATE TABLE IF NOT EXISTS courses (
     course_id INTEGER PRIMARY KEY AUTOINCREMENT,
     title TEXT,
@@ -19,7 +19,16 @@ c.execute('''CREATE TABLE IF NOT EXISTS courses (
     price REAL
 )''')
 
-# Students table
+# Lessons
+c.execute('''CREATE TABLE IF NOT EXISTS lessons (
+    lesson_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    course_id INTEGER,
+    title TEXT,
+    content TEXT,
+    FOREIGN KEY(course_id) REFERENCES courses(course_id)
+)''')
+
+# Students
 c.execute('''CREATE TABLE IF NOT EXISTS students (
     student_id INTEGER PRIMARY KEY AUTOINCREMENT,
     full_name TEXT,
@@ -30,7 +39,6 @@ c.execute('''CREATE TABLE IF NOT EXISTS students (
     institution TEXT,
     profile_picture BLOB
 )''')
-
 conn.commit()
 
 # ---------------------------
@@ -56,6 +64,27 @@ def convert_image_to_bytes(uploaded_file):
 def get_courses():
     return c.execute("SELECT * FROM courses ORDER BY course_id DESC").fetchall()
 
+def get_lessons(course_id):
+    return c.execute("SELECT * FROM lessons WHERE course_id=? ORDER BY lesson_id ASC", (course_id,)).fetchall()
+
+def add_course(title, subtitle, desc, price):
+    c.execute("INSERT INTO courses (title, subtitle, description, price) VALUES (?,?,?,?)",
+              (title, subtitle, desc, price))
+    conn.commit()
+
+def delete_course(course_id):
+    c.execute("DELETE FROM courses WHERE course_id=?", (course_id,))
+    c.execute("DELETE FROM lessons WHERE course_id=?", (course_id,))
+    conn.commit()
+
+def add_lesson(course_id, title, content):
+    c.execute("INSERT INTO lessons (course_id,title,content) VALUES (?,?,?)", (course_id,title,content))
+    conn.commit()
+
+def delete_lesson(lesson_id):
+    c.execute("DELETE FROM lessons WHERE lesson_id=?", (lesson_id,))
+    conn.commit()
+
 def add_student(full_name, email, password, gender, profession, institution, profile_picture):
     try:
         c.execute("INSERT INTO students (full_name,email,password,gender,profession,institution,profile_picture) VALUES (?,?,?,?,?,?,?)",
@@ -66,8 +95,7 @@ def add_student(full_name, email, password, gender, profession, institution, pro
         return False
 
 def authenticate_student(email, password):
-    student = c.execute("SELECT * FROM students WHERE email=? AND password=?", (email, password)).fetchone()
-    return student
+    return c.execute("SELECT * FROM students WHERE email=? AND password=?", (email, password)).fetchone()
 
 # ---------------------------
 # Page Config
@@ -99,6 +127,7 @@ st.markdown("""
             cursor: pointer;
         }
         .enroll-btn:hover {background: #45a049;}
+        .center-logo {display: flex; justify-content: center;}
     </style>
 """, unsafe_allow_html=True)
 
@@ -107,7 +136,10 @@ st.markdown("""
 # ---------------------------
 
 def page_home():
-    st.image("https://github.com/eintrusts/CAP/blob/main/EinTrust%20%20(2).png?raw=true", width=180)
+    st.markdown('<div class="center-logo">', unsafe_allow_html=True)
+    st.image("https://github.com/eintrusts/CAP/blob/main/EinTrust%20%20(2).png?raw=true", width=220)
+    st.markdown('</div>', unsafe_allow_html=True)
+
     st.header("Available Courses")
     courses = get_courses()
     if not courses:
@@ -127,7 +159,6 @@ def page_home():
                     st.session_state["page"] = "signup"
 
 def page_signup():
-    st.image("https://github.com/eintrusts/CAP/blob/main/EinTrust%20%20(2).png?raw=true", width=180)
     st.header("Create Profile")
     with st.form("signup_form"):
         profile_picture = st.file_uploader("Profile Picture", type=["png","jpg","jpeg"])
@@ -154,7 +185,6 @@ def page_signup():
                     st.error("Email already registered. Please login.")
 
 def page_login():
-    st.image("https://github.com/eintrusts/CAP/blob/main/EinTrust%20%20(2).png?raw=true", width=180)
     st.header("Student Login")
     email = st.text_input("Email ID", key="login_email")
     password = st.text_input("Password", type="password", key="login_pass")
@@ -168,7 +198,6 @@ def page_login():
             st.error("Invalid credentials.")
 
 def page_dashboard():
-    st.image("https://github.com/eintrusts/CAP/blob/main/EinTrust%20%20(2).png?raw=true", width=180)
     st.header("Student Dashboard")
     student = st.session_state.get("student")
     if student:
@@ -178,30 +207,70 @@ def page_dashboard():
         st.warning("Please login first.")
 
 def page_admin():
-    st.image("https://github.com/eintrusts/CAP/blob/main/EinTrust%20%20(2).png?raw=true", width=180)
     st.header("Admin Login")
     admin_pass = st.text_input("Enter Admin Password", type="password")
     if st.button("Login as Admin"):
-        if admin_pass == "admin123":  # Change this to secure password
+        if admin_pass == "admin123":  # Secure password recommended
             st.success("Welcome Admin")
-            st.subheader("Dashboard")
-            st.write("Manage courses and students here.")
+            st.subheader("Manage Courses")
+
+            # Add Course
+            with st.form("add_course_form"):
+                title = st.text_input("Course Title")
+                subtitle = st.text_input("Subtitle")
+                desc = st.text_area("Description")
+                price = st.number_input("Price (0 for free)", min_value=0.0, step=100.0)
+                add_course_btn = st.form_submit_button("Add Course")
+                if add_course_btn:
+                    add_course(title, subtitle, desc, price)
+                    st.success("Course added successfully!")
+
+            # Delete Course
+            courses = get_courses()
+            course_options = {f"{c[1]} (ID: {c[0]})": c[0] for c in courses}
+            if courses:
+                selected_course = st.selectbox("Select course to delete", list(course_options.keys()))
+                if st.button("Delete Course"):
+                    delete_course(course_options[selected_course])
+                    st.warning("Course deleted.")
+
+            # Add Lessons
+            if courses:
+                selected_course_lesson = st.selectbox("Select course to add lesson", list(course_options.keys()), key="lesson_add")
+                with st.form("add_lesson_form"):
+                    l_title = st.text_input("Lesson Title")
+                    l_content = st.text_area("Lesson Content")
+                    add_lesson_btn = st.form_submit_button("Add Lesson")
+                    if add_lesson_btn:
+                        add_lesson(course_options[selected_course_lesson], l_title, l_content)
+                        st.success("Lesson added successfully!")
+
+            # Delete Lesson
+            lessons = []
+            if courses:
+                selected_course_for_lessons = st.selectbox("Select course to view lessons", list(course_options.keys()), key="lesson_view")
+                lessons = get_lessons(course_options[selected_course_for_lessons])
+            if lessons:
+                lesson_options = {f"{l[2]} (ID: {l[0]})": l[0] for l in lessons}
+                selected_lesson = st.selectbox("Select lesson to delete", list(lesson_options.keys()))
+                if st.button("Delete Lesson"):
+                    delete_lesson(lesson_options[selected_lesson])
+                    st.warning("Lesson deleted.")
 
             st.subheader("All Students")
             students = c.execute("SELECT full_name,email,profession,institution FROM students").fetchall()
             for s in students:
                 st.write(s)
-
-            st.subheader("All Courses")
-            courses = get_courses()
-            for c_row in courses:
-                st.write(c_row)
         else:
             st.error("Wrong admin password.")
 
 # ---------------------------
 # MAIN NAVIGATION
 # ---------------------------
+st.markdown('<div class="center-logo">', unsafe_allow_html=True)
+st.image("https://github.com/eintrusts/CAP/blob/main/EinTrust%20%20(2).png?raw=true", width=220)
+st.markdown('</div>', unsafe_allow_html=True)
+
 tabs = st.tabs(["Home", "Signup", "Login", "Admin"])
 
 with tabs[0]:
