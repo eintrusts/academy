@@ -1,8 +1,28 @@
-# EinTrust Academy - Full Functional Streamlit App
+# ---------------------------
+# Auto-install missing packages
+# ---------------------------
+import subprocess, sys
+
+def install(package):
+    subprocess.check_call([sys.executable, "-m", "pip", "install", package])
+
+try:
+    from fpdf import FPDF
+except ModuleNotFoundError:
+    install("fpdf")
+    from fpdf import FPDF
+
+try:
+    from PIL import Image
+except ModuleNotFoundError:
+    install("Pillow")
+    from PIL import Image
+
+# ---------------------------
+# Core Imports
+# ---------------------------
 import streamlit as st
 import sqlite3, os, datetime, uuid
-from fpdf import FPDF
-from PIL import Image
 
 # ---------------------------
 # Database Setup
@@ -12,7 +32,7 @@ conn = sqlite3.connect(DB_FILE, check_same_thread=False)
 c = conn.cursor()
 
 # ---------------------------
-# Tables
+# Tables Setup
 # ---------------------------
 def setup_db():
     c.execute("""CREATE TABLE IF NOT EXISTS students(
@@ -81,14 +101,12 @@ def setup_db():
         PRIMARY KEY(student_id, quiz_id)
     )""")
     conn.commit()
-
 setup_db()
 
 # ---------------------------
 # Session Defaults
 # ---------------------------
 if "user" not in st.session_state: st.session_state.user = None
-if "current_course" not in st.session_state: st.session_state.current_course = None
 
 # ---------------------------
 # Dark Theme + Hover Buttons
@@ -135,7 +153,7 @@ def mark_lesson_viewed(student_id, lesson_id):
     conn.commit()
 
 def mark_quiz_attempt(student_id, quiz_id, correct):
-    c.execute("""INSERT OR REPLACE INTO quiz_progress(student_id, quiz_id, attempted, correct) VALUES (?,?,?,?)""",
+    c.execute("""INSERT OR REPLACE INTO quiz_progress(student_id, quiz_id, attempted, correct) VALUES(?,?,?,?)""",
               (student_id, quiz_id, 1, correct))
     conn.commit()
 
@@ -224,151 +242,203 @@ def forgot_password():
         else: st.error("Email not found!")
 
 # ---------------------------
-# Student Course/Lesson/Quiz Views
+# Student Dashboard
 # ---------------------------
 def student_dashboard(user):
     st.subheader(f"Welcome, {user['name']}")
     
     tabs = st.tabs(["All Courses", "My Courses", "Profile"])
     
-    # All Courses
+    # ---------------------------
+    # All Courses Tab
+    # ---------------------------
     with tabs[0]:
         c.execute("SELECT * FROM courses")
         courses = c.fetchall()
         for course in courses:
-            st.markdown(f"<div class='card'><h4>{course[1]}</h4><p>{course[2]}</p><b>Price: {inr_format(course[3]) if course[3]>0 else 'Free'}</b></div>", unsafe_allow_html=True)
-            if st.button(f"Enroll in {course[1]}", key=f"enroll_{course[0]}"):
-                st.session_state.current_course = course[0]
-                st.info("Please access this course in 'My Courses' tab after enrollment.")
-
-    # My Courses
+            enrolled = c.execute("SELECT * FROM payments WHERE student_id=? AND course_id=? AND status='Completed'",
+                                 (user['id'], course[0])).fetchone()
+            st.markdown(f"<div class='card'><h3>{course[1]}</h3><p>{course[2]}</p><b>Price: {inr_format(course[3])}</b></div>", unsafe_allow_html=True)
+            
+            if enrolled:
+                st.success("✅ Already Enrolled")
+            else:
+                if course[3]==0:
+                    if st.button(f"Enroll for Free", key=f"enroll_{course[0]}"):
+                        c.execute("INSERT INTO payments(student_id,course_id,amount,status,transaction_id) VALUES(?,?,?,?,?)",
+                                  (user['id'], course[0], 0, "Completed", str(uuid.uuid4())))
+                        conn.commit()
+                        st.success("Enrolled Successfully!")
+                else:
+                    if st.button(f"Pay & Enroll {inr_format(course[3])}", key=f"pay_{course[0]}"):
+                        transaction_id = str(uuid.uuid4())
+                        c.execute("INSERT INTO payments(student_id,course_id,amount,status,transaction_id) VALUES(?,?,?,?,?)",
+                                  (user['id'], course[0], course[3], "Completed", transaction_id))
+                        conn.commit()
+                        st.success(f"Payment Successful! Transaction ID: {transaction_id}")
+    
+    # ---------------------------
+    # My Courses Tab
+    # ---------------------------
     with tabs[1]:
-        course_id = st.session_state.get("current_course")
-        if course_id:
-            c.execute("SELECT * FROM courses WHERE course_id=?", (course_id,))
-            course = c.fetchone()
-            st.markdown(f"<h3>{course[1]}</h3><p>{course[2]}</p>", unsafe_allow_html=True)
-            c.execute("SELECT * FROM lessons WHERE course_id=?", (course_id,))
-            lessons = c.fetchall()
-            for lesson in lessons:
-                completed = c.execute("SELECT viewed FROM lesson_progress WHERE student_id=? AND lesson_id=?",
-                                      (user['id'], lesson[0])).fetchone()
-                status = "✅ Completed" if completed and completed[0]==1 else "❌ Not Completed"
-                st.markdown(f"<div class='card'><h5>{lesson[2]}</h5><p>{lesson[3]}</p><b>Status: {status}</b></div>", unsafe_allow_html=True)
-                if st.button(f"Mark '{lesson[2]}' as Complete", key=f"lesson_{lesson[0]}"):
-                    mark_lesson_viewed(user['id'], lesson[0])
-                    st.success("Marked as complete!")
-
-            # Certificate generation if all lessons done
-            all_done = all(c.execute("SELECT viewed FROM lesson_progress WHERE student_id=? AND lesson_id=?", (user['id'], l[0])).fetchone()[0]==1 for l in lessons)
-            if all_done and lessons:
-                if st.button("Generate Certificate"):
-                    cert_file = generate_certificate(user['name'], course[1], user['id'], course_id)
-                    st.success("Certificate generated!")
-                    st.download_button("Download Certificate PDF", cert_file)
-
+        c.execute("""SELECT c.course_id, c.title, c.description 
+                     FROM courses c 
+                     JOIN payments p ON c.course_id=p.course_id 
+                     WHERE p.student_id=? AND p.status='Completed'""", (user['id'],))
+        my_courses = c.fetchall()
+        if not my_courses:
+            st.info("No courses enrolled yet!")
+        else:
+            for course in my_courses:
+                st.markdown(f"<div class='card'><h3>{course[1]}</h3><p>{course[2]}</p></div>", unsafe_allow_html=True)
+                lessons = c.execute("SELECT * FROM lessons WHERE course_id=?", (course[0],)).fetchall()
+                all_complete = True
+                for lesson in lessons:
+                    viewed = c.execute("SELECT viewed FROM lesson_progress WHERE student_id=? AND lesson_id=?", (user['id'], lesson[0])).fetchone()
+                    completed = viewed[0]==1 if viewed else False
+                    col1, col2 = st.columns([6,1])
+                    with col1: st.write(f"📖 {lesson[2]}")
+                    with col2:
+                        if not completed and st.button(f"Mark Complete ({lesson[2]})", key=f"lesson_{lesson[0]}"):
+                            mark_lesson_viewed(user['id'], lesson[0])
+                            st.success("Lesson marked complete!")
+                            completed=True
+                    if not completed: all_complete=False
+                # Quizzes per lesson
+                quizzes = []
+                for lesson in lessons:
+                    quizzes.extend(c.execute("SELECT * FROM quizzes WHERE lesson_id=?", (lesson[0],)).fetchall())
+                for quiz in quizzes:
+                    attempt = c.execute("SELECT attempted FROM quiz_progress WHERE student_id=? AND quiz_id=?", (user['id'], quiz[0])).fetchone()
+                    attempted = attempt[0]==1 if attempt else False
+                    if not attempted:
+                        with st.expander(f"Attempt Quiz: {quiz[2]}"):
+                            options = [quiz[3], quiz[4], quiz[5], quiz[6]]
+                            ans = st.radio("Choose answer", options, key=f"quiz_{quiz[0]}")
+                            if st.button("Submit Answer", key=f"submit_quiz_{quiz[0]}"):
+                                correct = options.index(ans)+1 == quiz[7]
+                                mark_quiz_attempt(user['id'], quiz[0], int(correct))
+                                if correct: st.success("Correct Answer! ✅")
+                                else: st.error(f"Wrong Answer! Correct is: {options[quiz[7]-1]}")
+                                all_complete=False
+                # Certificate generation
+                if all_complete:
+                    existing_cert = c.execute("SELECT cert_file FROM certificates WHERE student_id=? AND course_id=?", (user['id'], course[0])).fetchone()
+                    if existing_cert:
+                        st.success("🎓 Certificate already generated!")
+                        st.download_button("Download Certificate", data=open(existing_cert[0], "rb").read(), file_name=os.path.basename(existing_cert[0]), mime="application/pdf")
+                    else:
+                        cert_file = generate_certificate(user['name'], course[1], user['id'], course[0])
+                        st.success("🎓 Certificate generated!")
+                        st.download_button("Download Certificate", data=open(cert_file, "rb").read(), file_name=os.path.basename(cert_file), mime="application/pdf")
+    
+    # ---------------------------
     # Profile Tab
+    # ---------------------------
     with tabs[2]:
         c.execute("SELECT name,email,sex,profession,institution,mobile,pic FROM students WHERE student_id=?", (user['id'],))
         profile = c.fetchone()
-        st.write("**Full Name:**", profile[0])
-        st.write("**Email:**", profile[1])
-        st.write("**Sex:**", profile[2])
-        st.write("**Profession:**", profile[3])
-        st.write("**Institution:**", profile[4])
-        st.write("**Mobile:**", profile[5])
-        if profile[6]:
-            st.image(profile[6], width=100)
+        st.subheader("My Profile")
+        col1, col2 = st.columns([3,7])
+        with col1:
+            if profile[6] and os.path.exists(profile[6]):
+                st.image(profile[6], width=150)
+        with col2:
+            st.write(f"**Full Name:** {profile[0]}")
+            st.write(f"**Email:** {profile[1]}")
+            st.write(f"**Sex:** {profile[2]}")
+            st.write(f"**Profession:** {profile[3]}")
+            st.write(f"**Institution:** {profile[4]}")
+            st.write(f"**Mobile:** {profile[5]}")
 
 # ---------------------------
 # Admin Dashboard
 # ---------------------------
 def admin_dashboard():
     st.subheader("Admin Dashboard")
-    tabs = st.tabs(["Students","Courses","Lessons","Quizzes","Certificates"])
+    
+    tabs = st.tabs(["Students", "Courses & Enrollments", "Lesson & Quiz Progress", "Certificates"])
     
     # Students
     with tabs[0]:
-        c.execute("SELECT student_id,name,email,sex,profession,institution,mobile FROM students")
+        st.markdown("### Registered Students")
+        c.execute("SELECT student_id, name, email, sex, profession, institution, mobile FROM students")
         students = c.fetchall()
-        st.dataframe(students)
-
-    # Courses
+        if students:
+            st.dataframe(students, use_container_width=True)
+        else:
+            st.info("No students registered yet.")
+    
+    # Courses & Enrollments
     with tabs[1]:
-        st.write("Add Course")
-        with st.form("add_course"):
-            title = st.text_input("Title")
-            desc = st.text_area("Description")
-            price = st.number_input("Price", 0)
-            submitted = st.form_submit_button("Add Course")
-            if submitted:
-                c.execute("INSERT INTO courses(title,description,price) VALUES(?,?,?)", (title,desc,price))
-                conn.commit()
-                st.success("Course added!")
-
-        st.write("Existing Courses")
-        c.execute("SELECT * FROM courses")
-        courses = c.fetchall()
-        st.dataframe(courses)
-
-    # Lessons
+        st.markdown("### Course Enrollments & Payments")
+        c.execute("""
+        SELECT p.payment_id, s.name, c.title, p.amount, p.status, p.transaction_id
+        FROM payments p
+        JOIN students s ON p.student_id = s.student_id
+        JOIN courses c ON p.course_id = c.course_id
+        """)
+        enrollments = c.fetchall()
+        if enrollments:
+            st.dataframe(enrollments, use_container_width=True)
+        else:
+            st.info("No enrollments yet.")
+    
+    # Lesson & Quiz Progress
     with tabs[2]:
-        st.write("Add Lesson")
-        with st.form("add_lesson"):
-            c.execute("SELECT course_id,title FROM courses")
-            course_options = c.fetchall()
-            course_id = st.selectbox("Course", [f"{c[1]} ({c[0]})" for c in course_options])
-            title = st.text_input("Lesson Title")
-            content = st.text_area("Content")
-            content_type = st.selectbox("Type", ["Video","PDF","PPT","Text"])
-            submitted = st.form_submit_button("Add Lesson")
-            if submitted:
-                actual_id = int(course_id.split("(")[-1][:-1])
-                c.execute("INSERT INTO lessons(course_id,title,content,content_type) VALUES(?,?,?,?)",
-                          (actual_id,title,content,content_type))
-                conn.commit()
-                st.success("Lesson added!")
-
-    # Quizzes
-    with tabs[3]:
-        st.write("Add Quiz")
-        with st.form("add_quiz"):
-            c.execute("SELECT lesson_id,title FROM lessons")
-            lessons_options = c.fetchall()
-            lesson_id = st.selectbox("Lesson", [f"{l[1]} ({l[0]})" for l in lessons_options])
-            question = st.text_input("Question")
-            option1 = st.text_input("Option 1")
-            option2 = st.text_input("Option 2")
-            option3 = st.text_input("Option 3")
-            option4 = st.text_input("Option 4")
-            answer = st.number_input("Correct Option (1-4)", 1,4)
-            submitted = st.form_submit_button("Add Quiz")
-            if submitted:
-                actual_lesson_id = int(lesson_id.split("(")[-1][:-1])
-                c.execute("INSERT INTO quizzes(lesson_id,question,option1,option2,option3,option4,answer) VALUES(?,?,?,?,?,?,?)",
-                          (actual_lesson_id,question,option1,option2,option3,option4,answer))
-                conn.commit()
-                st.success("Quiz added!")
-
+        st.markdown("### Lesson Progress")
+        c.execute("""
+        SELECT s.name, l.title, lp.viewed
+        FROM lesson_progress lp
+        JOIN students s ON lp.student_id = s.student_id
+        JOIN lessons l ON lp.lesson_id = l.lesson_id
+        """)
+        lesson_progress = c.fetchall()
+        st.dataframe(lesson_progress, use_container_width=True)
+        
+        st.markdown("### Quiz Progress")
+        c.execute("""
+        SELECT s.name, q.question, qp.attempted, qp.correct
+        FROM quiz_progress qp
+        JOIN students s ON qp.student_id = s.student_id
+        JOIN quizzes q ON qp.quiz_id = q.quiz_id
+        """)
+        quiz_progress = c.fetchall()
+        st.dataframe(quiz_progress, use_container_width=True)
+    
     # Certificates
-    with tabs[4]:
-        c.execute("SELECT * FROM certificates")
-        certificates = c.fetchall()
-        st.dataframe(certificates)
+    with tabs[3]:
+        st.markdown("### Generated Certificates")
+        c.execute("""
+        SELECT s.name, c.title, cert_file
+        FROM certificates cf
+        JOIN students s ON cf.student_id = s.student_id
+        JOIN courses c ON cf.course_id = c.course_id
+        """)
+        certs = c.fetchall()
+        if certs:
+            for cert in certs:
+                st.write(f"Student: {cert[0]} | Course: {cert[1]}")
+                if os.path.exists(cert[2]):
+                    st.download_button("Download Certificate", data=open(cert[2], "rb").read(), file_name=os.path.basename(cert[2]), mime="application/pdf")
+                else:
+                    st.warning("Certificate file missing!")
+        else:
+            st.info("No certificates generated yet.")
 
 # ---------------------------
-# Main Navigation
+# Main App
 # ---------------------------
-if st.session_state.user is None:
-    choice = st.radio("Navigation", ["Login", "Signup", "Forgot Password"])
-    if choice=="Login": login()
-    elif choice=="Signup": signup()
-    else: forgot_password()
+if not st.session_state.user:
+    st.session_state.user = None
+    st.subheader("Welcome to EinTrust Academy")
+    st.write("Login or Create Profile to continue.")
+    signup()
+    login()
+    forgot_password()
 else:
-    if st.session_state.user['role']=="student": student_dashboard(st.session_state.user)
+    user = st.session_state.user
+    if user["role"]=="student": student_dashboard(user)
     else: admin_dashboard()
 
-# ---------------------------
-# Footer
-# ---------------------------
 footer()
