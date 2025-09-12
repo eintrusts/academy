@@ -3,7 +3,6 @@ import streamlit as st
 import sqlite3, os, datetime, uuid
 from fpdf import FPDF
 from PIL import Image
-import streamlit.components.v1 as components
 
 # ---------------------------
 # Database Setup
@@ -225,6 +224,139 @@ def forgot_password():
         else: st.error("Email not found!")
 
 # ---------------------------
+# Student Course/Lesson/Quiz Views
+# ---------------------------
+def student_dashboard(user):
+    st.subheader(f"Welcome, {user['name']}")
+    
+    tabs = st.tabs(["All Courses", "My Courses", "Profile"])
+    
+    # All Courses
+    with tabs[0]:
+        c.execute("SELECT * FROM courses")
+        courses = c.fetchall()
+        for course in courses:
+            st.markdown(f"<div class='card'><h4>{course[1]}</h4><p>{course[2]}</p><b>Price: {inr_format(course[3]) if course[3]>0 else 'Free'}</b></div>", unsafe_allow_html=True)
+            if st.button(f"Enroll in {course[1]}", key=f"enroll_{course[0]}"):
+                st.session_state.current_course = course[0]
+                st.info("Please access this course in 'My Courses' tab after enrollment.")
+
+    # My Courses
+    with tabs[1]:
+        course_id = st.session_state.get("current_course")
+        if course_id:
+            c.execute("SELECT * FROM courses WHERE course_id=?", (course_id,))
+            course = c.fetchone()
+            st.markdown(f"<h3>{course[1]}</h3><p>{course[2]}</p>", unsafe_allow_html=True)
+            c.execute("SELECT * FROM lessons WHERE course_id=?", (course_id,))
+            lessons = c.fetchall()
+            for lesson in lessons:
+                completed = c.execute("SELECT viewed FROM lesson_progress WHERE student_id=? AND lesson_id=?",
+                                      (user['id'], lesson[0])).fetchone()
+                status = "✅ Completed" if completed and completed[0]==1 else "❌ Not Completed"
+                st.markdown(f"<div class='card'><h5>{lesson[2]}</h5><p>{lesson[3]}</p><b>Status: {status}</b></div>", unsafe_allow_html=True)
+                if st.button(f"Mark '{lesson[2]}' as Complete", key=f"lesson_{lesson[0]}"):
+                    mark_lesson_viewed(user['id'], lesson[0])
+                    st.success("Marked as complete!")
+
+            # Certificate generation if all lessons done
+            all_done = all(c.execute("SELECT viewed FROM lesson_progress WHERE student_id=? AND lesson_id=?", (user['id'], l[0])).fetchone()[0]==1 for l in lessons)
+            if all_done and lessons:
+                if st.button("Generate Certificate"):
+                    cert_file = generate_certificate(user['name'], course[1], user['id'], course_id)
+                    st.success("Certificate generated!")
+                    st.download_button("Download Certificate PDF", cert_file)
+
+    # Profile Tab
+    with tabs[2]:
+        c.execute("SELECT name,email,sex,profession,institution,mobile,pic FROM students WHERE student_id=?", (user['id'],))
+        profile = c.fetchone()
+        st.write("**Full Name:**", profile[0])
+        st.write("**Email:**", profile[1])
+        st.write("**Sex:**", profile[2])
+        st.write("**Profession:**", profile[3])
+        st.write("**Institution:**", profile[4])
+        st.write("**Mobile:**", profile[5])
+        if profile[6]:
+            st.image(profile[6], width=100)
+
+# ---------------------------
+# Admin Dashboard
+# ---------------------------
+def admin_dashboard():
+    st.subheader("Admin Dashboard")
+    tabs = st.tabs(["Students","Courses","Lessons","Quizzes","Certificates"])
+    
+    # Students
+    with tabs[0]:
+        c.execute("SELECT student_id,name,email,sex,profession,institution,mobile FROM students")
+        students = c.fetchall()
+        st.dataframe(students)
+
+    # Courses
+    with tabs[1]:
+        st.write("Add Course")
+        with st.form("add_course"):
+            title = st.text_input("Title")
+            desc = st.text_area("Description")
+            price = st.number_input("Price", 0)
+            submitted = st.form_submit_button("Add Course")
+            if submitted:
+                c.execute("INSERT INTO courses(title,description,price) VALUES(?,?,?)", (title,desc,price))
+                conn.commit()
+                st.success("Course added!")
+
+        st.write("Existing Courses")
+        c.execute("SELECT * FROM courses")
+        courses = c.fetchall()
+        st.dataframe(courses)
+
+    # Lessons
+    with tabs[2]:
+        st.write("Add Lesson")
+        with st.form("add_lesson"):
+            c.execute("SELECT course_id,title FROM courses")
+            course_options = c.fetchall()
+            course_id = st.selectbox("Course", [f"{c[1]} ({c[0]})" for c in course_options])
+            title = st.text_input("Lesson Title")
+            content = st.text_area("Content")
+            content_type = st.selectbox("Type", ["Video","PDF","PPT","Text"])
+            submitted = st.form_submit_button("Add Lesson")
+            if submitted:
+                actual_id = int(course_id.split("(")[-1][:-1])
+                c.execute("INSERT INTO lessons(course_id,title,content,content_type) VALUES(?,?,?,?)",
+                          (actual_id,title,content,content_type))
+                conn.commit()
+                st.success("Lesson added!")
+
+    # Quizzes
+    with tabs[3]:
+        st.write("Add Quiz")
+        with st.form("add_quiz"):
+            c.execute("SELECT lesson_id,title FROM lessons")
+            lessons_options = c.fetchall()
+            lesson_id = st.selectbox("Lesson", [f"{l[1]} ({l[0]})" for l in lessons_options])
+            question = st.text_input("Question")
+            option1 = st.text_input("Option 1")
+            option2 = st.text_input("Option 2")
+            option3 = st.text_input("Option 3")
+            option4 = st.text_input("Option 4")
+            answer = st.number_input("Correct Option (1-4)", 1,4)
+            submitted = st.form_submit_button("Add Quiz")
+            if submitted:
+                actual_lesson_id = int(lesson_id.split("(")[-1][:-1])
+                c.execute("INSERT INTO quizzes(lesson_id,question,option1,option2,option3,option4,answer) VALUES(?,?,?,?,?,?,?)",
+                          (actual_lesson_id,question,option1,option2,option3,option4,answer))
+                conn.commit()
+                st.success("Quiz added!")
+
+    # Certificates
+    with tabs[4]:
+        c.execute("SELECT * FROM certificates")
+        certificates = c.fetchall()
+        st.dataframe(certificates)
+
+# ---------------------------
 # Main Navigation
 # ---------------------------
 if st.session_state.user is None:
@@ -232,6 +364,9 @@ if st.session_state.user is None:
     if choice=="Login": login()
     elif choice=="Signup": signup()
     else: forgot_password()
+else:
+    if st.session_state.user['role']=="student": student_dashboard(st.session_state.user)
+    else: admin_dashboard()
 
 # ---------------------------
 # Footer
