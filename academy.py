@@ -1,7 +1,7 @@
 import streamlit as st
 import sqlite3
-from fpdf import FPDF
 from datetime import datetime
+import hashlib
 
 # ----------------------------
 # DATABASE SETUP
@@ -9,7 +9,9 @@ from datetime import datetime
 conn = sqlite3.connect("eintrust_academy.db", check_same_thread=False)
 c = conn.cursor()
 
-# Students table
+# ----------------------------
+# TABLES
+# ----------------------------
 c.execute("""
 CREATE TABLE IF NOT EXISTS students (
     student_id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -24,11 +26,10 @@ CREATE TABLE IF NOT EXISTS students (
 )
 """)
 
-# Courses table
 c.execute("""
 CREATE TABLE IF NOT EXISTS courses (
     course_id INTEGER PRIMARY KEY AUTOINCREMENT,
-    title TEXT,
+    title TEXT NOT NULL,
     subtitle TEXT,
     description TEXT,
     price REAL,
@@ -37,19 +38,17 @@ CREATE TABLE IF NOT EXISTS courses (
 )
 """)
 
-# Lessons table
 c.execute("""
 CREATE TABLE IF NOT EXISTS lessons (
     lesson_id INTEGER PRIMARY KEY AUTOINCREMENT,
     course_id INTEGER,
     title TEXT,
-    content_type TEXT, -- video/pdf/ppt/text
+    content_type TEXT,
     content_path TEXT,
     FOREIGN KEY(course_id) REFERENCES courses(course_id)
 )
 """)
 
-# Enrollments table
 c.execute("""
 CREATE TABLE IF NOT EXISTS enrollments (
     enrollment_id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -62,7 +61,6 @@ CREATE TABLE IF NOT EXISTS enrollments (
 )
 """)
 
-# Certificates table
 c.execute("""
 CREATE TABLE IF NOT EXISTS certificates (
     certificate_id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -73,31 +71,28 @@ CREATE TABLE IF NOT EXISTS certificates (
     FOREIGN KEY(course_id) REFERENCES courses(course_id)
 )
 """)
-
 conn.commit()
 
 # ----------------------------
-# DUMMY DATA (Courses + Lessons)
+# DUMMY DATA
 # ----------------------------
 def insert_dummy_data():
-    # Check if courses exist
     c.execute("SELECT COUNT(*) FROM courses")
     if c.fetchone()[0] == 0:
         courses = [
-            ("Sustainability Basics", "Introduction to Sustainability", 
-             "Learn the fundamentals of sustainability and eco-friendly practices.", 499, "Sustainability", "https://via.placeholder.com/350x150"),
-            ("Climate Change Fundamentals", "Understand Climate Change", 
-             "Explore causes, impacts, and mitigation strategies of climate change.", 599, "Climate Change", "https://via.placeholder.com/350x150"),
-            ("ESG & Corporate Responsibility", "Environmental, Social & Governance", 
-             "Dive into ESG concepts, reporting standards, and real-world case studies.", 799, "ESG", "https://via.placeholder.com/350x150")
+            ("Sustainability Basics", "Introduction to Sustainability",
+             "Learn the fundamentals of sustainability and eco-friendly practices.", 499.0, "Sustainability", "https://via.placeholder.com/350x150"),
+            ("Climate Change Fundamentals", "Understand Climate Change",
+             "Explore causes, impacts, and mitigation strategies of climate change.", 599.0, "Climate Change", "https://via.placeholder.com/350x150"),
+            ("ESG & Corporate Responsibility", "Environmental, Social & Governance",
+             "Dive into ESG concepts, reporting standards, and real-world case studies.", 799.0, "ESG", "https://via.placeholder.com/350x150")
         ]
         for title, subtitle, desc, price, cat, banner in courses:
             c.execute("INSERT INTO courses (title, subtitle, description, price, category, banner_path) VALUES (?,?,?,?,?,?)",
-                      (title, subtitle, desc, price, cat, banner))
+                      (title, subtitle, desc, float(price), cat, banner))
         conn.commit()
 
-        # Add lessons for each course
-        course_ids = [1,2,3]
+        # Lessons
         lessons = {
             1: [("Introduction to Sustainability","text",""), ("Global Practices","pdf",""), ("Local Action","video","")],
             2: [("Causes of Climate Change","text",""), ("Impacts","pdf",""), ("Mitigation Strategies","video","")],
@@ -108,30 +103,30 @@ def insert_dummy_data():
                 c.execute("INSERT INTO lessons (course_id,title,content_type,content_path) VALUES (?,?,?,?)",
                           (cid, title, ctype, path))
         conn.commit()
-
 insert_dummy_data()
 
 # ----------------------------
-# CSS STYLING
+# SESSION STATE
+# ----------------------------
+if 'student_id' not in st.session_state:
+    st.session_state.student_id = None
+if 'admin_logged_in' not in st.session_state:
+    st.session_state.admin_logged_in = False
+if 'page' not in st.session_state:
+    st.session_state.page = "home"
+
+# ----------------------------
+# STYLING
 # ----------------------------
 st.set_page_config(page_title="EinTrust Academy", layout="wide", page_icon="🌱")
-
 st.markdown("""
 <style>
-/* Dark Theme */
-body, .stApp {
-    background-color: #121212;
-    color: #f0f0f0;
-    font-family: 'Arial', sans-serif;
-}
+body, .stApp {background-color: #121212; color: #f0f0f0; font-family: 'Arial', sans-serif;}
 a {color: #00bfff; text-decoration:none;}
 a:hover {color: #009acd;}
 .course-card:hover {background-color:#1e1e1e; transform: scale(1.02); transition: 0.3s;}
 .lesson-card:hover {background-color:#1e1e1e; transform: scale(1.01); transition: 0.2s;}
-.top-nav {
-    background-color:#1f1f1f; padding:10px 20px; position:sticky; top:0; z-index:9999; display:flex; align-items:center; justify-content:space-between;
-    border-bottom:1px solid #333;
-}
+.top-nav {background-color:#1f1f1f; padding:10px 20px; position:sticky; top:0; z-index:9999; display:flex; align-items:center; justify-content:space-between; border-bottom:1px solid #333;}
 .nav-center {display:flex; gap:15px; align-items:center;}
 .nav-center input, .nav-center select {padding:5px; border-radius:5px; border:none;}
 .nav-link {margin-right:15px; color:#f0f0f0; font-weight:bold;}
@@ -142,49 +137,40 @@ a:hover {color: #009acd;}
 """, unsafe_allow_html=True)
 
 # ----------------------------
-# SESSION STATE
+# UTILITY FUNCTIONS
 # ----------------------------
-if 'student_id' not in st.session_state:
-    st.session_state.student_id = None
-if 'admin_logged_in' not in st.session_state:
-    st.session_state.admin_logged_in = False
+def hash_password(pw):
+    return hashlib.sha256(pw.encode()).hexdigest()
 
 # ----------------------------
-# NAV BAR
+# TOP NAV
 # ----------------------------
 def top_nav():
-    st.markdown("""
-    <div class="top-nav">
-        <div style="display:flex; align-items:center;">
-            <img src="https://github.com/eintrusts/CAP/blob/main/EinTrust%20%20(2).png" width="180">
-        </div>
-        <div class="nav-center">
-            <span class="nav-link" onclick="window.scrollTo(0,0)">Browse Courses</span>
-            <span class="nav-link">About</span>
-            <span class="nav-link">Contact</span>
-            <input type="text" placeholder="Search for anything" id="search_bar">
-            <select id="category_filter">
-                <option value="">All Categories</option>
-            </select>
-        </div>
-        <div>
-            <button class="btn-hover" onclick="window.location.href='#'">Login</button>
-        </div>
-    </div>
-    """, unsafe_allow_html=True)
-
-# ----------------------------
-# COURSE BROWSING PAGE
-# ----------------------------
-def page_courses():
-    st.subheader("All Courses")
-    search_query = st.text_input("Search for courses", "")
-    # Dynamic categories
     c.execute("SELECT DISTINCT category FROM courses")
     categories = [row[0] for row in c.fetchall()]
-    category_filter = st.selectbox("Select Category", ["All"] + categories)
+    categories = ["All"] + categories
 
-    # Fetch courses
+    col1, col2, col3 = st.columns([2,5,2])
+    with col1:
+        st.image("https://github.com/eintrusts/CAP/blob/main/EinTrust%20%20(2).png", width=180)
+    with col2:
+        st.markdown("""
+            <span class="nav-link">Browse Courses</span>
+            <span class="nav-link">About</span>
+            <span class="nav-link">Contact</span>
+            """, unsafe_allow_html=True)
+        search_query = st.text_input("Search for anything", key="search")
+        category_filter = st.selectbox("Category", ["All"] + categories[1:], key="cat_filter")
+    with col3:
+        if st.session_state.student_id is None:
+            if st.button("Login", key="login_btn_top"):
+                st.session_state.page = "login"
+    return search_query, category_filter
+
+# ----------------------------
+# DISPLAY COURSES
+# ----------------------------
+def display_courses(search_query="", category_filter="All"):
     query = "SELECT course_id, title, subtitle, description, price, category, banner_path FROM courses"
     params = []
     if category_filter != "All":
@@ -192,11 +178,9 @@ def page_courses():
         params.append(category_filter)
     courses = c.execute(query, params).fetchall()
 
-    # Filter by search
     if search_query:
         courses = [crs for crs in courses if search_query.lower() in crs[1].lower()]
 
-    # Display cards
     for crs in courses:
         st.markdown(f"""
         <div class="course-card" style="padding:15px; margin:10px; border:1px solid #333; border-radius:10px;">
@@ -205,18 +189,23 @@ def page_courses():
             <h5>{crs[2]}</h5>
             <p>{crs[3]}</p>
             <b>₹{crs[4]:,.0f}</b>
-            <br><button class="btn-hover" onclick="window.location.href='#'">Preview / Enroll</button>
+            <br><button class="btn-hover" onclick="window.alert('Enroll/Login first')">Preview / Enroll</button>
         </div>
         """, unsafe_allow_html=True)
 
 # ----------------------------
-# MAIN APP
+# HOME PAGE
+# ----------------------------
+def home_page():
+    search_query, category_filter = top_nav()
+    display_courses(search_query, category_filter)
+    st.markdown("<div style='text-align:center; padding:10px;'>© 2025 EinTrust Academy</div>", unsafe_allow_html=True)
+
+# ----------------------------
+# MAIN
 # ----------------------------
 def main():
-    top_nav()
-    page_courses()
+    if st.session_state.page == "home":
+        home_page()
 
 main()
-
-# Footer
-st.markdown("<div style='text-align:center; padding:10px;'>© 2025 EinTrust Academy</div>", unsafe_allow_html=True)
