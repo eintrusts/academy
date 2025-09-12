@@ -96,7 +96,7 @@ def get_student_courses(student_id):
 st.set_page_config(page_title="EinTrust Academy", layout="wide")
 
 # ---------------------------
-# Dark Theme CSS
+# Dark Theme + Button CSS
 # ---------------------------
 st.markdown("""
     <style>
@@ -107,8 +107,8 @@ st.markdown("""
         .stTextArea > div > textarea {
             background-color: #1e1e1e; color: #f5f5f5; border: 1px solid #333333; border-radius: 6px;
         }
-        .stButton button {background-color: #4CAF50; color: white; border-radius: 8px; border: none; padding: 8px 16px;}
-        .stButton button:hover {background-color: #45a049; color: #ffffff;}
+        .unique-btn button {background-color: #4CAF50 !important; color: white !important; border-radius: 8px !important; border: none !important; padding: 10px 20px !important; font-weight: bold !important;}
+        .unique-btn button:hover {background-color: #45a049 !important; color: #ffffff !important;}
         .course-card {background: #1c1c1c; border-radius: 12px; padding: 16px; margin: 12px; box-shadow: 0px 4px 10px rgba(0,0,0,0.6);}
         .course-title {font-size: 22px; font-weight: bold; color: #f0f0f0;}
         .course-subtitle {font-size: 16px; color: #b0b0b0;}
@@ -117,12 +117,13 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ---------------------------
-# PAGES
+# Course Display Function (Responsive Grid)
 # ---------------------------
 def display_courses_grid(courses, enroll_option=False, student_id=None):
     if not courses:
         st.info("No courses available.")
         return
+    # Use 2-column layout on wide, 1-column on small screens (streamlit handles)
     cols = st.columns(2)
     for idx, course in enumerate(courses):
         with cols[idx % 2]:
@@ -135,10 +136,13 @@ def display_courses_grid(courses, enroll_option=False, student_id=None):
             </div>
             """, unsafe_allow_html=True)
             if enroll_option and student_id:
-                if st.button(f"Enroll in {course[1]}", key=f"enroll_{course[0]}"):
+                if st.button(f"Enroll in {course[1]}", key=f"enroll_{course[0]}", help="", args=(), kwargs={}, type="primary"):
                     enroll_student_in_course(student_id, course[0])
                     st.success(f"Enrolled in {course[1]}!")
 
+# ---------------------------
+# PAGES
+# ---------------------------
 def page_home():
     st.image("https://github.com/eintrusts/CAP/blob/main/EinTrust%20%20(2).png?raw=true", width=180)
     st.header("Available Courses")
@@ -156,7 +160,7 @@ def page_signup():
         gender = st.selectbox("Gender", ["Male","Female","Other"])
         profession = st.text_input("Profession")
         institution = st.text_input("Institution")
-        submitted = st.form_submit_button("Submit")
+        submitted = st.form_submit_button("Submit", use_container_width=True)
         if submitted:
             if not is_valid_email(email):
                 st.error("Enter a valid email address.")
@@ -176,7 +180,7 @@ def page_login():
     st.header("Student Login")
     email = st.text_input("Email ID", key="login_email")
     password = st.text_input("Password", type="password", key="login_pass")
-    if st.button("Login"):
+    if st.button("Login", use_container_width=True):
         student = authenticate_student(email, password)
         if student:
             st.session_state["student"] = student
@@ -201,7 +205,7 @@ def page_student_dashboard():
         st.subheader("Your Enrolled Courses")
         courses = get_student_courses(student[0])
         display_courses_grid(courses)
-        if st.button("Logout"):
+        if st.button("Logout", use_container_width=True):
             st.session_state.clear()
             st.experimental_rerun()
     else:
@@ -211,7 +215,7 @@ def page_admin():
     st.image("https://github.com/eintrusts/CAP/blob/main/EinTrust%20%20(2).png?raw=true", width=180)
     st.header("Admin Login")
     admin_pass = st.text_input("Enter Admin Password", type="password")
-    if st.button("Login as Admin"):
+    if st.button("Login as Admin", use_container_width=True):
         if admin_pass == "eintrust2025":
             st.session_state["page"] = "admin_dashboard"
             st.experimental_rerun()
@@ -227,7 +231,7 @@ def page_admin_dashboard():
     st.subheader("All Courses")
     courses = get_courses()
     display_courses_grid(courses)
-    if st.button("Logout"):
+    if st.button("Logout", use_container_width=True):
         st.session_state.clear()
         st.experimental_rerun()
 
