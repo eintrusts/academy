@@ -31,6 +31,15 @@ c.execute('''CREATE TABLE IF NOT EXISTS students (
     profile_picture BLOB
 )''')
 
+# Student-Courses relation table
+c.execute('''CREATE TABLE IF NOT EXISTS student_courses (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    student_id INTEGER,
+    course_id INTEGER,
+    FOREIGN KEY(student_id) REFERENCES students(student_id),
+    FOREIGN KEY(course_id) REFERENCES courses(course_id)
+)''')
+
 conn.commit()
 
 # ---------------------------
@@ -66,8 +75,20 @@ def add_student(full_name, email, password, gender, profession, institution, pro
         return False
 
 def authenticate_student(email, password):
-    student = c.execute("SELECT * FROM students WHERE email=? AND password=?", (email, password)).fetchone()
-    return student
+    return c.execute("SELECT * FROM students WHERE email=? AND password=?", (email, password)).fetchone()
+
+def enroll_student_in_course(student_id, course_id):
+    existing = c.execute("SELECT * FROM student_courses WHERE student_id=? AND course_id=?", (student_id, course_id)).fetchone()
+    if not existing:
+        c.execute("INSERT INTO student_courses (student_id, course_id) VALUES (?,?)", (student_id, course_id))
+        conn.commit()
+
+def get_student_courses(student_id):
+    return c.execute(
+        '''SELECT courses.course_id, courses.title, courses.subtitle, courses.description, courses.price 
+           FROM courses JOIN student_courses 
+           ON courses.course_id = student_courses.course_id 
+           WHERE student_courses.student_id=?''', (student_id,)).fetchall()
 
 # ---------------------------
 # Page Config
@@ -75,86 +96,58 @@ def authenticate_student(email, password):
 st.set_page_config(page_title="EinTrust Academy", layout="wide")
 
 # ---------------------------
-# Custom Dark Theme CSS
+# Dark Theme CSS
 # ---------------------------
 st.markdown("""
     <style>
-        body {
-            background-color: #0d0f12;
-            color: #e0e0e0;
-        }
-        .stApp {
-            background-color: #0d0f12;
-            color: #e0e0e0;
-        }
+        body {background-color: #0d0f12; color: #e0e0e0;}
+        .stApp {background-color: #0d0f12; color: #e0e0e0;}
         .stTextInput > div > div > input,
         .stSelectbox > div > div > select,
         .stTextArea > div > textarea {
-            background-color: #1e1e1e;
-            color: #f5f5f5;
-            border: 1px solid #333333;
-            border-radius: 6px;
+            background-color: #1e1e1e; color: #f5f5f5; border: 1px solid #333333; border-radius: 6px;
         }
-        .stButton button {
-            background-color: #4CAF50;
-            color: white;
-            border-radius: 8px;
-            border: none;
-            padding: 8px 16px;
-        }
-        .stButton button:hover {
-            background-color: #45a049;
-            color: #ffffff;
-        }
-        .course-card {
-            background: #1c1c1c;
-            border-radius: 12px;
-            padding: 16px;
-            margin: 12px 0;
-            box-shadow: 0px 4px 10px rgba(0,0,0,0.6);
-        }
-        .course-title {
-            font-size: 22px;
-            font-weight: bold;
-            color: #f0f0f0;
-        }
-        .course-subtitle {
-            font-size: 16px;
-            color: #b0b0b0;
-        }
-        .course-desc {
-            font-size: 14px;
-            color: #cccccc;
-        }
+        .stButton button {background-color: #4CAF50; color: white; border-radius: 8px; border: none; padding: 8px 16px;}
+        .stButton button:hover {background-color: #45a049; color: #ffffff;}
+        .course-card {background: #1c1c1c; border-radius: 12px; padding: 16px; margin: 12px; box-shadow: 0px 4px 10px rgba(0,0,0,0.6);}
+        .course-title {font-size: 22px; font-weight: bold; color: #f0f0f0;}
+        .course-subtitle {font-size: 16px; color: #b0b0b0;}
+        .course-desc {font-size: 14px; color: #cccccc;}
     </style>
 """, unsafe_allow_html=True)
 
 # ---------------------------
 # PAGES
 # ---------------------------
+def display_courses_grid(courses, enroll_option=False, student_id=None):
+    if not courses:
+        st.info("No courses available.")
+        return
+    cols = st.columns(2)
+    for idx, course in enumerate(courses):
+        with cols[idx % 2]:
+            st.markdown(f"""
+            <div class="course-card">
+                <div class="course-title">{course[1]}</div>
+                <div class="course-subtitle">{course[2]}</div>
+                <div class="course-desc">{course[3][:150]}...</div>
+                <p><b>Price:</b> {"Free" if course[4]==0 else f"₹{course[4]:,.0f}"}</p>
+            </div>
+            """, unsafe_allow_html=True)
+            if enroll_option and student_id:
+                if st.button(f"Enroll in {course[1]}", key=f"enroll_{course[0]}"):
+                    enroll_student_in_course(student_id, course[0])
+                    st.success(f"Enrolled in {course[1]}!")
+
 def page_home():
     st.image("https://github.com/eintrusts/CAP/blob/main/EinTrust%20%20(2).png?raw=true", width=180)
-    st.header("📚 Available Courses")
+    st.header("Available Courses")
     courses = get_courses()
-    if not courses:
-        st.info("No courses available yet.")
-    else:
-        for course in courses:
-            with st.container():
-                st.markdown(f"""
-                <div class="course-card">
-                    <div class="course-title">{course[1]}</div>
-                    <div class="course-subtitle">{course[2]}</div>
-                    <div class="course-desc">{course[3][:150]}...</div>
-                    <p><b>Price:</b> {"Free" if course[4]==0 else f"₹{course[4]:,.0f}"}</p>
-                </div>
-                """, unsafe_allow_html=True)
-                if st.button(f"Enroll in {course[1]}", key=f"enroll_{course[0]}"):
-                    st.session_state["page"] = "signup"
+    display_courses_grid(courses)
 
 def page_signup():
     st.image("https://github.com/eintrusts/CAP/blob/main/EinTrust%20%20(2).png?raw=true", width=180)
-    st.header("📝 Create Profile")
+    st.header("Create Profile")
     with st.form("signup_form"):
         profile_picture = st.file_uploader("Profile Picture", type=["png","jpg","jpeg"])
         full_name = st.text_input("Full Name")
@@ -164,7 +157,6 @@ def page_signup():
         profession = st.text_input("Profession")
         institution = st.text_input("Institution")
         submitted = st.form_submit_button("Submit")
-
         if submitted:
             if not is_valid_email(email):
                 st.error("Enter a valid email address.")
@@ -174,33 +166,41 @@ def page_signup():
                 img_bytes = convert_image_to_bytes(profile_picture)
                 success = add_student(full_name, email, password, gender, profession, institution, img_bytes)
                 if success:
-                    st.success("✅ Profile created successfully! Please login.")
+                    st.success("Profile created successfully! Please login.")
                     st.session_state["page"] = "login"
                 else:
                     st.error("Email already registered. Please login.")
 
 def page_login():
     st.image("https://github.com/eintrusts/CAP/blob/main/EinTrust%20%20(2).png?raw=true", width=180)
-    st.header("🔐 Student Login")
+    st.header("Student Login")
     email = st.text_input("Email ID", key="login_email")
     password = st.text_input("Password", type="password", key="login_pass")
     if st.button("Login"):
         student = authenticate_student(email, password)
         if student:
-            st.success("✅ Login successful! Redirecting...")
             st.session_state["student"] = student
             st.session_state["page"] = "student_dashboard"
             st.experimental_rerun()
         else:
-            st.error("❌ Invalid credentials.")
+            st.error("Invalid credentials.")
 
 def page_student_dashboard():
     st.image("https://github.com/eintrusts/CAP/blob/main/EinTrust%20%20(2).png?raw=true", width=180)
-    st.header("🎓 Student Dashboard")
+    st.header("Student Dashboard")
     student = st.session_state.get("student")
     if student:
-        st.write(f"Welcome, **{student[1]}** 👋")
-        st.write("Your enrolled courses will appear here soon.")
+        if student[7]:
+            st.image(Image.open(io.BytesIO(student[7])), width=150)
+        st.subheader(f"{student[1]}")
+        st.write(f"Email: {student[2]}")
+        st.write(f"Gender: {student[4]}")
+        st.write(f"Profession: {student[5]}")
+        st.write(f"Institution: {student[6]}")
+        st.write("---")
+        st.subheader("Your Enrolled Courses")
+        courses = get_student_courses(student[0])
+        display_courses_grid(courses)
         if st.button("Logout"):
             st.session_state.clear()
             st.experimental_rerun()
@@ -209,36 +209,24 @@ def page_student_dashboard():
 
 def page_admin():
     st.image("https://github.com/eintrusts/CAP/blob/main/EinTrust%20%20(2).png?raw=true", width=180)
-    st.header("👩‍💻 Admin Login")
+    st.header("Admin Login")
     admin_pass = st.text_input("Enter Admin Password", type="password")
     if st.button("Login as Admin"):
-        if admin_pass == "eintrust2025":  # Change this for security
-            st.success("✅ Welcome Team, Redirecting...")
+        if admin_pass == "eintrust2025":
             st.session_state["page"] = "admin_dashboard"
             st.experimental_rerun()
         else:
-            st.error("❌ Wrong admin password.")
+            st.error("Wrong admin password.")
 
 def page_admin_dashboard():
     st.image("https://github.com/eintrusts/CAP/blob/main/EinTrust%20%20(2).png?raw=true", width=180)
-    st.header("📊 Admin Dashboard")
-
+    st.header("Admin Dashboard")
     st.subheader("All Students")
     students = c.execute("SELECT full_name,email,profession,institution FROM students").fetchall()
-    if students:
-        for s in students:
-            st.write(s)
-    else:
-        st.info("No students registered yet.")
-
+    for s in students: st.write(s)
     st.subheader("All Courses")
     courses = get_courses()
-    if courses:
-        for c_row in courses:
-            st.write(c_row)
-    else:
-        st.info("No courses available.")
-
+    display_courses_grid(courses)
     if st.button("Logout"):
         st.session_state.clear()
         st.experimental_rerun()
@@ -251,20 +239,11 @@ if "page" not in st.session_state:
 
 if st.session_state["page"] == "home":
     tabs = st.tabs(["Home", "Signup", "Login", "Admin"])
-    with tabs[0]:
-        page_home()
-    with tabs[1]:
-        page_signup()
-    with tabs[2]:
-        page_login()
-    with tabs[3]:
-        page_admin()
-
-elif st.session_state["page"] == "signup":
-    page_signup()
-elif st.session_state["page"] == "login":
-    page_login()
-elif st.session_state["page"] == "student_dashboard":
-    page_student_dashboard()
-elif st.session_state["page"] == "admin_dashboard":
-    page_admin_dashboard()
+    with tabs[0]: page_home()
+    with tabs[1]: page_signup()
+    with tabs[2]: page_login()
+    with tabs[3]: page_admin()
+elif st.session_state["page"] == "signup": page_signup()
+elif st.session_state["page"] == "login": page_login()
+elif st.session_state["page"] == "student_dashboard": page_student_dashboard()
+elif st.session_state["page"] == "admin_dashboard": page_admin_dashboard()
