@@ -59,11 +59,10 @@ CREATE TABLE IF NOT EXISTS enrollments (
     FOREIGN KEY(course_id) REFERENCES courses(course_id)
 )
 """)
-
 conn.commit()
 
 # ----------------------------
-# DUMMY DATA INSERTION (SAFE)
+# DUMMY DATA INSERTION
 # ----------------------------
 def insert_dummy_data():
     courses = [
@@ -91,9 +90,9 @@ def insert_dummy_data():
     }
 
     for course_title, les in lessons.items():
-        course_id_row = c.execute("SELECT course_id FROM courses WHERE title=?", (course_title,)).fetchone()
-        if course_id_row:
-            course_id = course_id_row[0]
+        course_row = c.execute("SELECT course_id FROM courses WHERE title=?", (course_title,)).fetchone()
+        if course_row:
+            course_id = course_row[0]
             for title, ctype, path in les:
                 exists = c.execute("SELECT 1 FROM lessons WHERE course_id=? AND title=?", (course_id, title)).fetchone()
                 if not exists:
@@ -111,6 +110,7 @@ insert_dummy_data()
 if 'student_id' not in st.session_state: st.session_state.student_id = None
 if 'admin_logged_in' not in st.session_state: st.session_state.admin_logged_in = False
 if 'page' not in st.session_state: st.session_state.page = "home"
+if 'enrolled_course' not in st.session_state: st.session_state.enrolled_course = None
 
 # ----------------------------
 # STYLING
@@ -154,9 +154,9 @@ def top_nav():
         st.image("https://github.com/eintrusts/CAP/blob/main/EinTrust%20%20(2).png", width=180)
     with col2:
         st.markdown("""
-            <span class="nav-link">Browse Courses</span>
-            <span class="nav-link">About</span>
-            <span class="nav-link">Contact</span>
+            <span class="nav-link" onclick="window.alert('Browse Courses')">Browse Courses</span>
+            <span class="nav-link" onclick="window.alert('About')">About</span>
+            <span class="nav-link" onclick="window.alert('Contact')">Contact</span>
         """, unsafe_allow_html=True)
         search_query = st.text_input("Search for anything", key="search")
         category_filter = st.selectbox("Category", categories, key="cat_filter")
