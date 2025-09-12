@@ -182,8 +182,8 @@ def page_admin():
     st.header("Admin Login")
     admin_pass = st.text_input("Enter Admin Password", type="password")
     if st.button("Login as Admin"):
-        if admin_pass == "admin123":  # Change this to secure password
-            st.success("Welcome Admin")
+        if admin_pass == "eintrust2025":  # Change this to secure password
+            st.success("Welcome Team")
             st.subheader("Dashboard")
             st.write("Manage courses and students here.")
 
