@@ -14,13 +14,13 @@ c = conn.cursor()
 c.execute("""
 CREATE TABLE IF NOT EXISTS students (
     student_id INTEGER PRIMARY KEY AUTOINCREMENT,
-    full_name TEXT,
-    email TEXT UNIQUE,
-    password TEXT,
+    full_name TEXT NOT NULL,
+    email TEXT UNIQUE NOT NULL,
+    password TEXT NOT NULL,
     sex TEXT,
-    profession TEXT,
+    profession TEXT NOT NULL,
     institution TEXT,
-    mobile TEXT,
+    mobile TEXT NOT NULL,
     profile_pic TEXT
 )
 """)
@@ -47,10 +47,23 @@ CREATE TABLE IF NOT EXISTS lessons (
     FOREIGN KEY(course_id) REFERENCES courses(course_id)
 )
 """)
+
+c.execute("""
+CREATE TABLE IF NOT EXISTS enrollments (
+    enroll_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    student_id INTEGER,
+    course_id INTEGER,
+    progress REAL DEFAULT 0,
+    completed INTEGER DEFAULT 0,
+    FOREIGN KEY(student_id) REFERENCES students(student_id),
+    FOREIGN KEY(course_id) REFERENCES courses(course_id)
+)
+""")
+
 conn.commit()
 
 # ----------------------------
-# INSERT DUMMY DATA
+# DUMMY DATA INSERTION (SAFE)
 # ----------------------------
 def insert_dummy_data():
     courses = [
@@ -61,24 +74,33 @@ def insert_dummy_data():
         ("ESG & Corporate Responsibility", "Environmental, Social & Governance",
          "Dive into ESG concepts, reporting standards, and real-world case studies.", 799.0, "ESG", "https://via.placeholder.com/350x150")
     ]
+
     for title, subtitle, desc, price, cat, banner in courses:
-        c.execute("""
-        INSERT OR IGNORE INTO courses (title, subtitle, description, price, category, banner_path)
-        VALUES (?,?,?,?,?,?)
-        """, (title, subtitle, desc, price, cat, banner))
+        exists = c.execute("SELECT 1 FROM courses WHERE title=?", (title,)).fetchone()
+        if not exists:
+            c.execute("""
+                INSERT INTO courses (title, subtitle, description, price, category, banner_path)
+                VALUES (?,?,?,?,?,?)
+            """, (title, subtitle, desc, float(price), cat, banner))
     conn.commit()
 
     lessons = {
-        1: [("Intro","text",""), ("Global Practices","pdf",""), ("Local Action","video","")],
-        2: [("Causes","text",""), ("Impacts","pdf",""), ("Mitigation","video","")],
-        3: [("What is ESG","text",""), ("Reporting","pdf",""), ("Case Studies","video","")]
+        "Sustainability Basics": [("Intro","text",""), ("Global Practices","pdf",""), ("Local Action","video","")],
+        "Climate Change Fundamentals": [("Causes","text",""), ("Impacts","pdf",""), ("Mitigation","video","")],
+        "ESG & Corporate Responsibility": [("What is ESG","text",""), ("Reporting","pdf",""), ("Case Studies","video","")]
     }
-    for cid, les in lessons.items():
-        for title, ctype, path in les:
-            c.execute("""
-            INSERT OR IGNORE INTO lessons (course_id,title,content_type,content_path)
-            VALUES (?,?,?,?)
-            """, (cid, title, ctype, path))
+
+    for course_title, les in lessons.items():
+        course_id_row = c.execute("SELECT course_id FROM courses WHERE title=?", (course_title,)).fetchone()
+        if course_id_row:
+            course_id = course_id_row[0]
+            for title, ctype, path in les:
+                exists = c.execute("SELECT 1 FROM lessons WHERE course_id=? AND title=?", (course_id, title)).fetchone()
+                if not exists:
+                    c.execute("""
+                        INSERT INTO lessons (course_id,title,content_type,content_path)
+                        VALUES (?,?,?,?)
+                    """, (course_id, title, ctype, path))
     conn.commit()
 
 insert_dummy_data()
@@ -117,14 +139,13 @@ def hash_password(pw): return hashlib.sha256(pw.encode()).hexdigest()
 def verify_password(pw, hashed): return hash_password(pw) == hashed
 
 # ----------------------------
-# TOP NAV
+# TOP NAVIGATION
 # ----------------------------
 def top_nav():
     try:
         c.execute("SELECT DISTINCT category FROM courses")
         categories = [row[0] for row in c.fetchall() if row[0] is not None]
-    except Exception as e:
-        st.error(f"Error fetching categories: {e}")
+    except:
         categories = []
     categories = ["All"] + categories
 
