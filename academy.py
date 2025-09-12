@@ -83,13 +83,6 @@ c.execute("""CREATE TABLE IF NOT EXISTS payments(
 conn.commit()
 
 # ---------------------------
-# Razorpay Config
-# ---------------------------
-RAZORPAY_KEY_ID = "your_key_id"
-RAZORPAY_KEY_SECRET = "your_key_secret"
-client = razorpay.Client(auth=(RAZORPAY_KEY_ID, RAZORPAY_KEY_SECRET))
-
-# ---------------------------
 # Utility Functions
 # ---------------------------
 def inr_format(amount):
@@ -101,12 +94,6 @@ def enroll_student_lessons(student_id, course_id):
     for lesson in lessons:
         c.execute("INSERT OR IGNORE INTO lesson_progress(student_id, lesson_id, viewed) VALUES (?,?,0)", (student_id, lesson[0]))
     conn.commit()
-
-def create_razorpay_order(student_id, course_id, course_title, price):
-    amount_in_paise = int(price*100)
-    order_data = {"amount": amount_in_paise,"currency":"INR","payment_capture":"1",
-                  "notes":{"student_id":str(student_id),"course_id":str(course_id)}}
-    return client.order.create(data=order_data)
 
 def mark_lesson_viewed(student_id, lesson_id):
     c.execute("UPDATE lesson_progress SET viewed=1 WHERE student_id=? AND lesson_id=?", (student_id, lesson_id))
@@ -124,18 +111,19 @@ def generate_certificate(student_name, course_title, student_id, course_id):
     pdf.output(file_name)
     return file_name
 
-def enroll_course_razorpay(student_id, course_id, course_title, price):
+# ---------------------------
+# Simulated Payment & Enrollment
+# ---------------------------
+def enroll_course(student_id, course_id, course_title, price):
     if price==0:
         st.success("Free course! You are enrolled automatically.")
-        enroll_student_lessons(student_id, course_id)
-        c.execute("INSERT OR IGNORE INTO payments(student_id,course_id,status) VALUES(?,?,?)",(student_id,course_id,'Success'))
-        conn.commit()
-        return
-    st.info(f"Paid course. Amount: {inr_format(price)}")
-    order = create_razorpay_order(student_id, course_id, course_title, price)
-    order_id = order['id']
-    st.markdown(f"[Pay Now](https://checkout.razorpay.com/v1/checkout.js?order_id={order_id}&key_id={RAZORPAY_KEY_ID})", unsafe_allow_html=True)
-    st.info("After payment, refresh page to see enrolled lessons.")
+    else:
+        st.info(f"Paid course. Amount: {inr_format(price)}")
+        if st.button(f"Simulate Payment for {course_title}"):
+            st.success("Payment successful! You are now enrolled.")
+    enroll_student_lessons(student_id, course_id)
+    c.execute("INSERT OR IGNORE INTO payments(student_id,course_id,status) VALUES(?,?,?)",(student_id,course_id,'Success'))
+    conn.commit()
 
 # ---------------------------
 # Signup Page
@@ -196,7 +184,7 @@ def admin_login():
     st.subheader("Admin Login")
     admin_pass = st.text_input("Enter Admin Password", type="password")
     if st.button("Enter"):
-        if admin_pass=="EinTrustAdmin123":
+        if admin_pass=="eintrust2025":
             st.session_state['admin']=True
             st.experimental_rerun()
         else: st.error("Incorrect Password")
@@ -211,21 +199,17 @@ def student_lessons(user):
                  JOIN courses c ON c.course_id=l.course_id
                  WHERE p.student_id=? AND p.status='Success'""",(user['id'],))
     lessons = c.fetchall()
-    
     if lessons:
         for lesson in lessons:
             lesson_id,title,course_id,ctype,cpath,course_title = lesson
             st.markdown(f"<div class='card'><b>Course:</b> {course_title}<br><b>Lesson:</b> {title}</div>",unsafe_allow_html=True)
-            
             if ctype=="video":
                 st.video(cpath)
             elif ctype in ["pdf","ppt","text"]:
                 st.download_button(f"Download {title}", cpath)
                 st.info(f"Simulate reading {ctype.upper()} to mark complete")
-            
             viewed = c.execute("SELECT viewed FROM lesson_progress WHERE student_id=? AND lesson_id=?",(user['id'],lesson_id)).fetchone()[0]
-            if viewed:
-                st.success("Completed ✅")
+            if viewed: st.success("Completed ✅")
             else:
                 if st.button(f"Mark as Complete", key=f"lesson_{lesson_id}"):
                     mark_lesson_viewed(user['id'], lesson_id)
@@ -238,8 +222,7 @@ def student_lessons(user):
                         conn.commit()
                         st.balloons()
                         st.success(f"All lessons completed! Certificate generated: {cert_file}")
-    else:
-        st.info("Enroll in courses to see lessons.")
+    else: st.info("Enroll in courses to see lessons.")
 
 # ---------------------------
 # Student Dashboard
@@ -247,7 +230,6 @@ def student_lessons(user):
 def student_dashboard(user):
     st.subheader(f"Welcome, {user['name']}!")
     tabs = st.tabs(["My Profile","Courses","My Lessons","My Progress","Certificates"])
-
     # Profile Tab
     with tabs[0]: 
         st.markdown("### Your Profile")
@@ -264,7 +246,6 @@ def student_dashboard(user):
                 st.write(f"**Profession:** {profile[3]}")
                 st.write(f"**Institution:** {profile[4]}")
                 st.write(f"**Mobile:** {profile[5]}")
-
     # Courses Tab
     with tabs[1]:
         st.markdown("### Available Courses")
@@ -276,12 +257,9 @@ def student_dashboard(user):
             if enrolled: st.success("Enrolled ✅")
             else:
                 if st.button(f"Enroll in {course[1]}",key=f"enroll_{course[0]}"):
-                    enroll_course_razorpay(user['id'], course[0], course[1], course[3])
-
+                    enroll_course(user['id'], course[0], course[1], course[3])
     # Lessons Tab
-    with tabs[2]:
-        student_lessons(user)
-
+    with tabs[2]: student_lessons(user)
     # Progress Tab
     with tabs[3]:
         st.subheader("Course Progress")
@@ -291,11 +269,8 @@ def student_dashboard(user):
                      WHERE lp.student_id=?
                      GROUP BY c.course_id""",(user['id'],))
         data = c.fetchall()
-        if data:
-            st.dataframe([{"Course":d[0],"Total Lessons":d[1],"Completed Lessons":d[2]} for d in data])
-        else:
-            st.info("No lessons tracked yet.")
-
+        if data: st.dataframe([{"Course":d[0],"Total Lessons":d[1],"Completed Lessons":d[2]} for d in data])
+        else: st.info("No lessons tracked yet.")
     # Certificates Tab
     with tabs[4]:
         st.subheader("Certificates")
@@ -305,8 +280,7 @@ def student_dashboard(user):
             for cert in certs:
                 st.markdown(f"<div class='card'><b>Course:</b> {cert[1]}</div>",unsafe_allow_html=True)
                 st.download_button("Download Certificate", cert[2])
-        else:
-            st.info("Complete lessons to get certificates.")
+        else: st.info("Complete lessons to get certificates.")
 
 # ---------------------------
 # Admin Dashboard
@@ -327,10 +301,8 @@ if 'student' not in st.session_state and 'admin' not in st.session_state:
         if option=="Login": login_page()
         else: signup_page()
     else: admin_login()
-elif 'student' in st.session_state:
-    student_dashboard(st.session_state['student'])
-elif 'admin' in st.session_state:
-    admin_dashboard()
+elif 'student' in st.session_state: student_dashboard(st.session_state['student'])
+elif 'admin' in st.session_state: admin_dashboard()
 
 # ---------------------------
 # Footer
