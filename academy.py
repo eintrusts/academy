@@ -62,18 +62,44 @@ CREATE TABLE IF NOT EXISTS enrollments (
 conn.commit()
 
 # -----------------------------
-# DUMMY DATA INSERTION (SAFE)
+# DUMMY DATA INSERTION
 # -----------------------------
 def insert_dummy_data():
     courses = [
-        ("Sustainability Basics", "Intro to Sustainability",
-         "Learn fundamentals of sustainability and eco-friendly practices.", 499.0, "Sustainability", "https://via.placeholder.com/350x150"),
-        ("Climate Change Fundamentals", "Understand Climate Change",
-         "Explore causes, impacts, and mitigation strategies of climate change.", 599.0, "Climate Change", "https://via.placeholder.com/350x150"),
-        ("ESG & Corporate Responsibility", "Environmental, Social & Governance",
-         "Dive into ESG concepts, reporting standards, and real-world case studies.", 799.0, "ESG", "https://via.placeholder.com/350x150")
+        {
+            "title": "Sustainability Basics",
+            "subtitle": "Intro to Sustainability",
+            "description": "Learn fundamentals of sustainability and eco-friendly practices.",
+            "price": 499.0,
+            "category": "Sustainability",
+            "banner_path": "https://via.placeholder.com/350x150"
+        },
+        {
+            "title": "Climate Change Fundamentals",
+            "subtitle": "Understand Climate Change",
+            "description": "Explore causes, impacts, and mitigation strategies of climate change.",
+            "price": 599.0,
+            "category": "Climate Change",
+            "banner_path": "https://via.placeholder.com/350x150"
+        },
+        {
+            "title": "ESG & Corporate Responsibility",
+            "subtitle": "Environmental, Social & Governance",
+            "description": "Dive into ESG concepts, reporting standards, and real-world case studies.",
+            "price": 799.0,
+            "category": "ESG",
+            "banner_path": "https://via.placeholder.com/350x150"
+        }
     ]
-    for title, subtitle, desc, price, cat, banner in courses:
+
+    for course in courses:
+        title = course.get("title","")
+        subtitle = course.get("subtitle","")
+        desc = course.get("description","")
+        price = float(course.get("price",0))
+        cat = course.get("category","General")
+        banner = course.get("banner_path","")
+
         c.execute("""
             INSERT OR IGNORE INTO courses (title, subtitle, description, price, category, banner_path)
             VALUES (?,?,?,?,?,?)
