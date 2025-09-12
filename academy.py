@@ -191,7 +191,7 @@ def display_courses_grid(courses, enroll_option=False, student_id=None, show_les
 # ---------------------------
 def page_home():
     st.image("https://github.com/eintrusts/CAP/blob/main/EinTrust%20%20(2).png?raw=true", width=180)
-    st.header("Available Courses")
+    st.header("Courses")
     courses = get_courses()
     display_courses_grid(courses)
 
