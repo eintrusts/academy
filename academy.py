@@ -31,7 +31,7 @@ c.execute('''CREATE TABLE IF NOT EXISTS lessons (
     FOREIGN KEY(course_id) REFERENCES courses(course_id)
 )''')
 
-# Students table (profile_picture removed)
+# Students table
 c.execute('''CREATE TABLE IF NOT EXISTS students (
     student_id INTEGER PRIMARY KEY AUTOINCREMENT,
     full_name TEXT,
@@ -145,13 +145,15 @@ st.markdown("""
         .stNumberInput > div > input {
             background-color: #1e1e1e; color: #f5f5f5; border: 1px solid #333333; border-radius: 6px;
         }
-        .unique-btn button {background-color: #4CAF50 !important; color: white !important; border-radius: 6px !important; border: none !important; padding: 8px 16px !important; font-weight: bold !important;}
+        .unique-btn button {background-color: #4CAF50 !important; color: white !important; border-radius: 8px !important; border: none !important; padding: 10px 20px !important; font-weight: bold !important;}
         .unique-btn button:hover {background-color: #45a049 !important; color: #ffffff !important;}
-        .course-card {background: #1c1c1c; border-radius: 12px; padding: 16px; margin: 12px; box-shadow: 0px 4px 10px rgba(0,0,0,0.6);}
-        .course-title {font-size: 20px; font-weight: bold; color: #f0f0f0;}
-        .course-subtitle {font-size: 14px; color: #b0b0b0;}
-        .course-desc {font-size: 14px; color: #cccccc;}
-        .course-footer {display: flex; justify-content: space-between; align-items: center; margin-top: 12px;}
+        .course-card {background: #1c1c1c; border-radius: 12px; padding: 16px; margin: 12px; box-shadow: 0px 4px 10px rgba(0,0,0,0.6); position: relative;}
+        .course-title {font-size: 22px; font-weight: bold; color: #f0f0f0;}
+        .course-subtitle {font-size: 16px; color: #b0b0b0;}
+        .course-desc {font-size: 14px; color: #cccccc; margin-top: 8px; margin-bottom: 40px;}
+        .course-footer {position: absolute; bottom: 16px; left: 16px; right: 16px; display: flex; justify-content: space-between; align-items: center;}
+        .course-footer button {background-color: #4CAF50 !important; color: white !important; border-radius: 6px !important; border: none !important; padding: 8px 16px !important; font-weight: bold !important;}
+        .course-footer button:hover {background-color: #45a049 !important; color: #ffffff !important;}
         .admin-toggle button {background-color: #2e2e2e !important; color: #ffffff !important; border-radius: 8px !important; padding: 10px 16px !important; margin-right: 10px;}
         .admin-toggle button:hover {background-color: #4CAF50 !important; color: white !important;}
         .section-header {border-bottom: 1px solid #333333; padding-bottom: 8px; margin-bottom: 10px; font-size: 20px;}
@@ -159,38 +161,34 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ---------------------------
-# Course Display Function
+# Display Courses with Enroll inside card
 # ---------------------------
-def display_courses_grid(courses, enroll_option=False, student_id=None, show_lessons=False):
+def display_courses_grid(courses, student_id=None):
     if not courses:
         st.info("No courses available.")
         return
     cols = st.columns(2)
     for idx, course in enumerate(courses):
         with cols[idx % 2]:
-            with st.container():
-                st.markdown(f"""
-                <div class="course-card">
-                    <div class="course-title">{course[1]}</div>
-                    <div class="course-subtitle">{course[2]}</div>
-                    <div class="course-desc">{course[3]}</div>
+            # Render course card with HTML
+            st.markdown(f"""
+            <div class="course-card">
+                <div class="course-title">{course[1]}</div>
+                <div class="course-desc">{course[3]}</div>
+                <div class="course-footer">
+                    <button id="enroll_{course[0]}">Enroll</button>
+                    <span style="color:#f5f5f5; font-weight:bold;">{"Free" if course[4]==0 else f"₹{course[4]:,.0f}"}</span>
                 </div>
-                """, unsafe_allow_html=True)
-                # Footer with Enroll button and price
-                footer_col1, footer_col2 = st.columns([1,1])
-                with footer_col1:
-                    if enroll_option:
-                        if st.button("Enroll", key=f"enroll_{course[0]}"):
-                            st.session_state["page"] = "signup"
-                            st.experimental_rerun()
-                with footer_col2:
-                    st.markdown(f"<p style='text-align:right; color:#f0f0f0; font-weight:bold;'>Price: {'Free' if course[4]==0 else f'₹{course[4]:,.0f}'}</p>", unsafe_allow_html=True)
-                if show_lessons:
-                    lessons = get_lessons(course[0])
-                    if lessons:
-                        st.write("Lessons:")
-                        for l in lessons:
-                            st.write(f"- {l[2]} ({l[4]})")
+            </div>
+            """, unsafe_allow_html=True)
+            # Streamlit enroll button functional
+            if st.button(f"Enroll-{course[0]}", key=f"enroll_streamlit_{course[0]}"):
+                if student_id:
+                    enroll_student_in_course(student_id, course[0])
+                    st.success(f"Enrolled in {course[1]}!")
+                else:
+                    st.session_state["page"] = "signup"
+                    st.experimental_rerun()
 
 # ---------------------------
 # Pages
@@ -199,7 +197,7 @@ def page_home():
     st.image("https://github.com/eintrusts/CAP/blob/main/EinTrust%20%20(2).png?raw=true", width=180)
     st.header("Courses")
     courses = get_courses()
-    display_courses_grid(courses, enroll_option=True)
+    display_courses_grid(courses)
 
 def page_signup():
     st.image("https://github.com/eintrusts/CAP/blob/main/EinTrust%20%20(2).png?raw=true", width=180)
@@ -248,10 +246,8 @@ def page_student_dashboard():
         st.write("---")
         st.subheader("Your Enrolled Courses")
         courses = get_student_courses(student[0])
-        if not courses:
-            st.info("You have not enrolled in any courses yet.")
-        else:
-            display_courses_grid(courses, show_lessons=True)
+        display_courses_grid(courses, student_id=student[0])
+        st.write("---")
         if st.button("Logout"):
             st.session_state.clear()
             st.experimental_rerun()
@@ -310,7 +306,6 @@ def page_admin_dashboard():
                 delete_course(course[0])
                 st.success(f"Deleted {course[1]}")
                 st.experimental_rerun()
-
         st.markdown("---")
         st.subheader("Add New Course")
         with st.form("add_course_form"):
@@ -333,7 +328,6 @@ def page_admin_dashboard():
                 delete_lesson(l[0])
                 st.success(f"Deleted lesson {l[1]}")
                 st.experimental_rerun()
-
         st.markdown("---")
         st.subheader("Add New Lesson")
         with st.form("add_lesson_form"):
