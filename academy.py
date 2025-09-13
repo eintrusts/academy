@@ -199,11 +199,45 @@ def display_courses(courses, enroll=False, student_id=None, show_lessons=False, 
 # Pages
 # ---------------------------
 def page_home():
-    st.image("https://github.com/eintrusts/CAP/blob/main/EinTrust%20%20(2).png?raw=true", width=180)
-    st.header("Courses")
-    student_id = st.session_state.get("student", [None])[0] if "student" in st.session_state else None
-    courses = get_courses()
-    display_courses(courses, enroll=True, student_id=student_id)
+    # Logo and Title on same line
+    st.markdown("""
+    <div style="display: flex; align-items: center; margin-bottom: 20px;">
+        <img src="https://github.com/eintrusts/CAP/blob/main/EinTrust%20%20(2).png?raw=true" width="60" style="margin-right: 15px;">
+        <h1 style="margin:0; color:#ffffff;">EinTrust Academy</h1>
+    </div>
+    """, unsafe_allow_html=True)
+
+    # Main Tabs
+    main_tabs = st.tabs(["Courses", "Student", "Admin"])
+
+    # ---------------- Courses Tab ----------------
+    with main_tabs[0]:
+        st.subheader("Available Courses")
+        student_id = st.session_state.get("student", [None])[0] if "student" in st.session_state else None
+        courses = get_courses()
+        display_courses(courses, enroll=True, student_id=student_id)
+
+    # ---------------- Student Tab with Sub-tabs ----------------
+    with main_tabs[1]:
+        student_tabs = st.tabs(["Signup", "Login"])
+
+        with student_tabs[0]:
+            page_signup()
+
+        with student_tabs[1]:
+            page_login()
+
+    # ---------------- Admin Tab ----------------
+    with main_tabs[2]:
+        page_admin()
+
+    # ---------------- Footer ----------------
+    st.markdown("""
+    <div style="position: relative; bottom: 0; width: 100%; text-align: center; padding: 10px; color: #888888; margin-top: 40px;">
+        &copy; 2025 EinTrust Academy. All rights reserved.
+    </div>
+    """, unsafe_allow_html=True)
+
 
 def page_signup():
     st.image("https://github.com/eintrusts/CAP/blob/main/EinTrust%20%20(2).png?raw=true", width=180)
