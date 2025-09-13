@@ -30,6 +30,11 @@ def init_db():
                     content TEXT,
                     description TEXT
                 )''')
+    c.execute('''CREATE TABLE IF NOT EXISTS enrollments (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    student_id INTEGER,
+                    course_id INTEGER
+                )''')
     conn.commit()
     conn.close()
 
@@ -89,6 +94,26 @@ def get_lessons(course_id):
     conn = sqlite3.connect("academy.db")
     c = conn.cursor()
     c.execute("SELECT * FROM lessons WHERE course_id=?", (course_id,))
+    data = c.fetchall()
+    conn.close()
+    return data
+
+def enroll_student(student_id, course_id):
+    conn = sqlite3.connect("academy.db")
+    c = conn.cursor()
+    c.execute("SELECT * FROM enrollments WHERE student_id=? AND course_id=?", (student_id, course_id))
+    if not c.fetchone():
+        c.execute("INSERT INTO enrollments (student_id, course_id) VALUES (?,?)", (student_id, course_id))
+    conn.commit()
+    conn.close()
+
+def get_student_courses(student_id):
+    conn = sqlite3.connect("academy.db")
+    c = conn.cursor()
+    c.execute("""SELECT courses.id, courses.name, courses.description, courses.amount
+                 FROM courses 
+                 JOIN enrollments ON courses.id = enrollments.course_id
+                 WHERE enrollments.student_id=?""", (student_id,))
     data = c.fetchall()
     conn.close()
     return data
@@ -206,23 +231,54 @@ def admin_login_page():
 
 def student_dashboard():
     st.title("Student Dashboard")
-    courses = get_courses()
-    st.subheader("Available Courses")
-    cols = st.columns(2)
-    for idx, course in enumerate(courses):
-        with cols[idx % 2]:
-            st.markdown(f"""
-            <div class="course-card">
-                <div class="course-title">{course[1]}</div>
-                <div class="course-desc">{course[2]}</div>
-                <div class="course-footer">
-                    <form action="#" method="get">
-                        <button type="submit" formaction="/?page=signup">Enroll</button>
-                    </form>
-                    <div><b>₹{course[3]}</b></div>
+    student = st.session_state.get("student")
+
+    if not student:
+        st.error("You must log in as student.")
+        return
+
+    st.subheader("My Courses")
+    my_courses = get_student_courses(student[0])
+    if my_courses:
+        cols = st.columns(2)
+        for idx, course in enumerate(my_courses):
+            with cols[idx % 2]:
+                st.markdown(f"""
+                <div class="course-card">
+                    <div class="course-title">{course[1]}</div>
+                    <div class="course-desc">{course[2]}</div>
+                    <div class="course-footer">
+                        <div>Enrolled</div>
+                        <div><b>₹{course[3]}</b></div>
+                    </div>
                 </div>
-            </div>
-            """, unsafe_allow_html=True)
+                """, unsafe_allow_html=True)
+    else:
+        st.info("You have not enrolled in any courses yet.")
+
+    st.subheader("Available Courses")
+    all_courses = get_courses()
+    enrolled_ids = [c[0] for c in my_courses]
+    available_courses = [c for c in all_courses if c[0] not in enrolled_ids]
+
+    if available_courses:
+        cols = st.columns(2)
+        for idx, course in enumerate(available_courses):
+            with cols[idx % 2]:
+                if st.button("Enroll", key=f"enroll_{course[0]}"):
+                    enroll_student(student[0], course[0])
+                    st.success(f"Enrolled in {course[1]}")
+                    st.experimental_rerun()
+                st.markdown(f"""
+                <div class="course-card">
+                    <div class="course-title">{course[1]}</div>
+                    <div class="course-desc">{course[2]}</div>
+                    <div class="course-footer">
+                        <div></div>
+                        <div><b>₹{course[3]}</b></div>
+                    </div>
+                </div>
+                """, unsafe_allow_html=True)
 
 def admin_dashboard():
     st.title("Admin Dashboard")
@@ -232,7 +288,7 @@ def admin_dashboard():
         st.subheader("All Courses Data")
         courses = get_courses()
         for c in courses:
-            st.write(f"📘 {c[1]} - ₹{c[3]}")
+            st.write(f"{c[1]} - ₹{c[3]}")
 
     elif menu == "Add Course":
         st.subheader("Add New Course")
