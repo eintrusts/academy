@@ -198,9 +198,6 @@ def display_courses(courses, enroll=False, student_id=None, show_lessons=False, 
 # ---------------------------
 # Pages
 # ---------------------------
-# ---------------------------
-# Home Page
-# ---------------------------
 def page_home():
     # Logo + Title
     st.markdown("""
@@ -222,10 +219,8 @@ def page_home():
 
     # Student Tab with sub-tabs
     with main_tabs[1]:
-        # Decide which sub-tab to open
         default_student_tab = st.session_state.get("student_tab", "Signup")
         student_tabs = st.tabs(["Signup", "Login"])
-        # Map to correct tab index
         if default_student_tab == "Signup":
             with student_tabs[0]:
                 page_signup()
@@ -275,7 +270,10 @@ def page_signup():
                     st.experimental_rerun()
                 else:
                     st.error("Email already registered. Please login.")
-                    
+
+# ---------------------------
+# Login Page
+# ---------------------------
 def page_login():
     st.header("Student Login")
     email = st.text_input("Email ID", key="login_email")
