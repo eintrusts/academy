@@ -136,71 +136,64 @@ def delete_lesson(lesson_id):
 st.set_page_config(page_title="EinTrust Academy", layout="wide")
 
 st.markdown("""
-    <style>
-        body {background-color: #0d0f12; color: #e0e0e0;}
-        .stApp {background-color: #0d0f12; color: #e0e0e0;}
-        .stTextInput > div > div > input,
-        .stSelectbox > div > div > select,
-        .stTextArea > div > textarea,
-        .stNumberInput > div > input {
-            background-color: #1e1e1e; color: #f5f5f5; border: 1px solid #333333; border-radius: 6px;
-        }
-        .unique-btn button {background-color: #4CAF50 !important; color: white !important; border-radius: 8px !important; border: none !important; padding: 10px 20px !important; font-weight: bold !important;}
-        .unique-btn button:hover {background-color: #45a049 !important; color: #ffffff !important;}
-        .course-card {background: #1c1c1c; border-radius: 12px; padding: 16px; margin: 12px; box-shadow: 0px 4px 10px rgba(0,0,0,0.6);}
-        .course-title {font-size: 22px; font-weight: bold; color: #f0f0f0;}
-        .course-subtitle {font-size: 16px; color: #b0b0b0;}
-        .course-desc {font-size: 14px; color: #cccccc;}
-        .admin-toggle button {background-color: #2e2e2e !important; color: #ffffff !important; border-radius: 8px !important; padding: 10px 16px !important; margin-right: 10px;}
-        .admin-toggle button:hover {background-color: #4CAF50 !important; color: white !important;}
-        .section-header {border-bottom: 1px solid #333333; padding-bottom: 8px; margin-bottom: 10px; font-size: 20px;}
-        .button-container {margin-top: 10px;}
-    </style>
+<style>
+    body {background-color: #0d0f12; color: #e0e0e0;}
+    .stApp {background-color: #0d0f12; color: #e0e0e0;}
+    .stTextInput > div > div > input,
+    .stSelectbox > div > div > select,
+    .stTextArea > div > textarea,
+    .stNumberInput > div > input {
+        background-color: #1e1e1e; color: #f5f5f5; border: 1px solid #333333; border-radius: 6px;
+    }
+    .unique-btn button {
+        background-color: #4CAF50 !important; 
+        color: white !important; 
+        border-radius: 8px !important; 
+        border: none !important; 
+        padding: 10px 20px !important; 
+        font-weight: bold !important; 
+        width: 100% !important;
+    }
+    .unique-btn button:hover {background-color: #45a049 !important; color: #ffffff !important;}
+    .course-card {
+        background: #1c1c1c; border-radius: 12px; padding: 16px; margin: 12px; box-shadow: 0px 4px 10px rgba(0,0,0,0.6);
+    }
+    .course-title {font-size: 22px; font-weight: bold; color: #f0f0f0;}
+    .course-subtitle {font-size: 16px; color: #b0b0b0;}
+    .course-desc {font-size: 14px; color: #cccccc;}
+    .section-header {border-bottom: 1px solid #333333; padding-bottom: 8px; margin-bottom: 10px; font-size: 20px;}
+</style>
 """, unsafe_allow_html=True)
 
 # ---------------------------
-# Display Courses (with Enroll inside card)
+# Display Courses
 # ---------------------------
-def display_courses(courses, enroll=False, student_id=None, show_lessons=False, editable=False):
+def display_courses_grid(courses, enroll_option=False, student_id=None, show_lessons=False):
     if not courses:
         st.info("No courses available.")
         return
     cols = st.columns(2)
     for idx, course in enumerate(courses):
         with cols[idx % 2]:
-            st.markdown(f"""
-            <div class="course-card">
-                <div class="course-title">{course[1]}</div>
-                <div class="course-subtitle">{course[2]}</div>
-                <div class="course-desc">{course[3][:150]}...</div>
-                <p><b>Price:</b> {"Free" if course[4]==0 else f"₹{course[4]:,.0f}"}</p>
-            </div>
-            """, unsafe_allow_html=True)
-            
-            # Enroll button inside card
-            if enroll and student_id:
-                form_key = f"enroll_form_{course[0]}"
-                with st.form(form_key):
-                    if st.form_submit_button("Enroll"):
+            with st.container():
+                st.markdown(f"""
+                <div class="course-card">
+                    <div class="course-title">{course[1]}</div>
+                    <div class="course-subtitle">{course[2]}</div>
+                    <div class="course-desc">{course[3][:150]}...</div>
+                    <p><b>Price:</b> {"Free" if course[4]==0 else f"₹{course[4]:,.0f}"}</p>
+                </div>
+                """, unsafe_allow_html=True)
+                if enroll_option and student_id:
+                    if st.button("Enroll", key=f"enroll_{course[0]}", use_container_width=True):
                         enroll_student_in_course(student_id, course[0])
                         st.success(f"Enrolled in {course[1]}!")
-
-            # Edit button for admin
-            if editable:
-                form_key_edit = f"edit_form_{course[0]}"
-                with st.form(form_key_edit):
-                    if st.form_submit_button("Edit Course"):
-                        st.session_state["edit_course"] = course
-                        st.session_state["page"] = "edit_course"
-                        st.experimental_rerun()
-
-            # Show lessons if requested
-            if show_lessons:
-                lessons = get_lessons(course[0])
-                if lessons:
-                    st.write("Lessons:")
-                    for l in lessons:
-                        st.write(f"- {l[2]} ({l[4]})")
+                if show_lessons:
+                    lessons = get_lessons(course[0])
+                    if lessons:
+                        st.write("Lessons:")
+                        for l in lessons:
+                            st.write(f"- {l[2]} ({l[4]})")
 
 # ---------------------------
 # Pages
@@ -209,7 +202,9 @@ def page_home():
     st.image("https://github.com/eintrusts/CAP/blob/main/EinTrust%20%20(2).png?raw=true", width=180)
     st.header("Courses")
     courses = get_courses()
-    display_courses(courses, enroll=True, student_id=st.session_state.get("student", [None])[0] if "student" in st.session_state else None)
+    student = st.session_state.get("student")
+    student_id = student[0] if student else None
+    display_courses_grid(courses, enroll_option=True, student_id=student_id)
 
 def page_signup():
     st.image("https://github.com/eintrusts/CAP/blob/main/EinTrust%20%20(2).png?raw=true", width=180)
@@ -254,12 +249,11 @@ def page_student_dashboard():
     st.header("Student Dashboard")
     student = st.session_state.get("student")
     if student:
-        st.subheader(f"{student[1]}")
-        st.write("---")
-        st.subheader("Your Enrolled Courses")
+        st.subheader(f"Welcome, {student[1]}!")
         courses = get_student_courses(student[0])
-        display_courses(courses, enroll=True, student_id=student[0], show_lessons=True)
-        if st.button("Logout"):
+        st.subheader("Your Enrolled Courses")
+        display_courses_grid(courses, show_lessons=True)
+        if st.button("Logout", key="logout_student"):
             st.session_state.clear()
             st.experimental_rerun()
     else:
@@ -282,6 +276,9 @@ def page_admin():
 def page_admin_dashboard():
     st.image("https://github.com/eintrusts/CAP/blob/main/EinTrust%20%20(2).png?raw=true", width=180)
     st.header("Admin Dashboard")
+    if st.button("Logout", key="logout_admin"):
+        st.session_state.clear()
+        st.experimental_rerun()
 
     tab1, tab2, tab3 = st.tabs(["Dashboard", "Students", "Courses & Lessons"])
 
@@ -304,15 +301,23 @@ def page_admin_dashboard():
                 conn.commit()
                 st.success(f"Deleted {s[1]}")
                 st.experimental_rerun()
-        if st.button("Logout"):
-            st.session_state.clear()
-            st.experimental_rerun()
 
     with tab3:
         st.subheader("Manage Courses & Lessons")
         courses = get_courses()
-        display_courses(courses, editable=True, show_lessons=True)
-
+        for course in courses:
+            st.write(f"{course[0]}. {course[1]} | {course[2]} | ₹{course[4]:,.0f}")
+            col1, col2 = st.columns([1,1])
+            with col1:
+                if st.button(f"Edit {course[0]}", key=f"edit_course_{course[0]}"):
+                    st.session_state["edit_course_id"] = course[0]
+                    st.session_state["page"] = "edit_course"
+                    st.experimental_rerun()
+            with col2:
+                if st.button(f"Delete {course[0]}", key=f"del_course_{course[0]}"):
+                    delete_course(course[0])
+                    st.success(f"Deleted {course[1]}")
+                    st.experimental_rerun()
         st.markdown("---")
         st.subheader("Add New Course")
         with st.form("add_course_form"):
