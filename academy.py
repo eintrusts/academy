@@ -144,13 +144,13 @@ st.markdown("""
         .stNumberInput > div > input {
             background-color: #1e1e1e; color: #f5f5f5; border: 1px solid #333333; border-radius: 6px;
         }
-        .btn-uniform button {background-color: #4CAF50 !important; color: white !important; border-radius: 8px !important; border: none !important; padding: 10px 20px !important; font-weight: bold !important; width:100%;}
+        .btn-uniform button {background-color: #4CAF50 !important; color: white !important; border-radius: 8px !important; border: none !important; padding: 10px 20px !important; font-weight: bold !important;}
         .btn-uniform button:hover {background-color: #45a049 !important; color: #ffffff !important;}
         .course-card {background: #1c1c1c; border-radius: 12px; padding: 16px; margin: 12px; box-shadow: 0px 4px 10px rgba(0,0,0,0.6);}
         .course-title {font-size: 22px; font-weight: bold; color: #f0f0f0;}
         .course-subtitle {font-size: 16px; color: #b0b0b0;}
         .course-desc {font-size: 14px; color: #cccccc; margin-top:8px;}
-        .card-footer {display:flex; justify-content:space-between; margin-top:12px;}
+        .card-footer {display:flex; justify-content:space-between; align-items:center; margin-top:12px;}
         .admin-toggle button {background-color: #2e2e2e !important; color: #ffffff !important; border-radius: 8px !important; padding: 10px 16px !important; margin-right: 10px;}
         .admin-toggle button:hover {background-color: #4CAF50 !important; color: white !important;}
         .section-header {border-bottom: 1px solid #333333; padding-bottom: 8px; margin-bottom: 10px; font-size: 20px;}
@@ -181,8 +181,8 @@ def display_courses_grid(courses, student_id=None):
             </div>
             """, unsafe_allow_html=True)
 
-            # Enroll logic
-            if st.button(f"Enroll {course[0]}", key=f"enroll_{course[0]}"):
+            # Functional enroll logic
+            if st.button(f"Enroll_{course[0]}", key=f"enroll_{course[0]}"):
                 if student_id:
                     enroll_student_in_course(student_id, course[0])
                     st.success(f"Enrolled in {course[1]}!")
