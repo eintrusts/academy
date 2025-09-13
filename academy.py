@@ -1,39 +1,15 @@
 import streamlit as st
 import sqlite3
-import re
-from PIL import Image
-import io
 
 # ---------------------------
-# DB Setup
+# Database Setup
 # ---------------------------
 conn = sqlite3.connect("academy.db", check_same_thread=False)
 c = conn.cursor()
 
-# Courses table
-c.execute('''CREATE TABLE IF NOT EXISTS courses (
-    course_id INTEGER PRIMARY KEY AUTOINCREMENT,
-    title TEXT,
-    subtitle TEXT,
-    description TEXT,
-    price REAL
-)''')
-
-# Lessons table
-c.execute('''CREATE TABLE IF NOT EXISTS lessons (
-    lesson_id INTEGER PRIMARY KEY AUTOINCREMENT,
-    course_id INTEGER,
-    title TEXT,
-    description TEXT,
-    lesson_type TEXT,
-    file BLOB,
-    link TEXT,
-    FOREIGN KEY(course_id) REFERENCES courses(course_id)
-)''')
-
 # Students table
 c.execute('''CREATE TABLE IF NOT EXISTS students (
-    student_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
     full_name TEXT,
     email TEXT UNIQUE,
     password TEXT,
@@ -42,40 +18,38 @@ c.execute('''CREATE TABLE IF NOT EXISTS students (
     institution TEXT
 )''')
 
-# Student-Courses relation table
-c.execute('''CREATE TABLE IF NOT EXISTS student_courses (
+# Courses table
+c.execute('''CREATE TABLE IF NOT EXISTS courses (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT,
+    description TEXT,
+    amount INTEGER
+)''')
+
+# Lessons table
+c.execute('''CREATE TABLE IF NOT EXISTS lessons (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    course_id INTEGER,
+    title TEXT,
+    content_type TEXT,
+    content TEXT,
+    description TEXT,
+    FOREIGN KEY(course_id) REFERENCES courses(id)
+)''')
+
+# Enrollment table
+c.execute('''CREATE TABLE IF NOT EXISTS enrollments (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     student_id INTEGER,
     course_id INTEGER,
-    FOREIGN KEY(student_id) REFERENCES students(student_id),
-    FOREIGN KEY(course_id) REFERENCES courses(course_id)
+    FOREIGN KEY(student_id) REFERENCES students(id),
+    FOREIGN KEY(course_id) REFERENCES courses(id)
 )''')
-
 conn.commit()
 
 # ---------------------------
 # Utility Functions
 # ---------------------------
-def is_valid_email(email):
-    return re.match(r"^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$", email)
-
-def is_valid_password(password):
-    return (len(password) >= 8 and
-            re.search(r"[A-Z]", password) and
-            re.search(r"[0-9]", password) and
-            re.search(r"[!@#$%^&*(),.?\":{}|<>]", password))
-
-def convert_file_to_bytes(uploaded_file):
-    if uploaded_file is not None:
-        return uploaded_file.read()
-    return None
-
-def get_courses():
-    return c.execute("SELECT * FROM courses ORDER BY course_id DESC").fetchall()
-
-def get_lessons(course_id):
-    return c.execute("SELECT * FROM lessons WHERE course_id=? ORDER BY lesson_id ASC", (course_id,)).fetchall()
-
 def add_student(full_name, email, password, gender, profession, institution):
     try:
         c.execute("INSERT INTO students (full_name,email,password,gender,profession,institution) VALUES (?,?,?,?,?,?)",
@@ -86,107 +60,115 @@ def add_student(full_name, email, password, gender, profession, institution):
         return False
 
 def authenticate_student(email, password):
-    return c.execute("SELECT * FROM students WHERE email=? AND password=?", (email, password)).fetchone()
+    c.execute("SELECT * FROM students WHERE email=? AND password=?", (email, password))
+    return c.fetchone()
 
-def enroll_student_in_course(student_id, course_id):
-    existing = c.execute("SELECT * FROM student_courses WHERE student_id=? AND course_id=?", (student_id, course_id)).fetchone()
-    if not existing:
-        c.execute("INSERT INTO student_courses (student_id, course_id) VALUES (?,?)", (student_id, course_id))
-        conn.commit()
+def get_courses():
+    c.execute("SELECT * FROM courses")
+    return c.fetchall()
 
-def get_student_courses(student_id):
-    return c.execute(
-        '''SELECT courses.course_id, courses.title, courses.subtitle, courses.description, courses.price 
-           FROM courses JOIN student_courses 
-           ON courses.course_id = student_courses.course_id 
-           WHERE student_courses.student_id=?''', (student_id,)).fetchall()
-
-def add_course(title, subtitle, description, price):
-    c.execute("INSERT INTO courses (title, subtitle, description, price) VALUES (?,?,?,?)", (title, subtitle, description, price))
+def add_course(name, description, amount):
+    c.execute("INSERT INTO courses (name, description, amount) VALUES (?,?,?)", (name, description, amount))
     conn.commit()
-    return c.lastrowid
 
-def update_course(course_id, title, subtitle, description, price):
-    c.execute("UPDATE courses SET title=?, subtitle=?, description=?, price=? WHERE course_id=?",
-              (title, subtitle, description, price, course_id))
+def update_course(course_id, name, description, amount):
+    c.execute("UPDATE courses SET name=?, description=?, amount=? WHERE id=?", (name, description, amount, course_id))
     conn.commit()
 
 def delete_course(course_id):
-    c.execute("DELETE FROM courses WHERE course_id=?", (course_id,))
-    c.execute("DELETE FROM lessons WHERE course_id=?", (course_id,))
+    c.execute("DELETE FROM courses WHERE id=?", (course_id,))
     conn.commit()
 
-def add_lesson(course_id, title, description, lesson_type, file, link):
-    c.execute("INSERT INTO lessons (course_id, title, description, lesson_type, file, link) VALUES (?,?,?,?,?,?)",
-              (course_id, title, description, lesson_type, file, link))
+def add_lesson(course_id, title, content_type, content, description):
+    c.execute("INSERT INTO lessons (course_id, title, content_type, content, description) VALUES (?,?,?,?,?)",
+              (course_id, title, content_type, content, description))
     conn.commit()
 
-def update_lesson(lesson_id, title, description, lesson_type, file, link):
-    c.execute("UPDATE lessons SET title=?, description=?, lesson_type=?, file=?, link=? WHERE lesson_id=?",
-              (title, description, lesson_type, file, link, lesson_id))
+def get_lessons(course_id):
+    c.execute("SELECT * FROM lessons WHERE course_id=?", (course_id,))
+    return c.fetchall()
+
+def enroll_student(student_id, course_id):
+    c.execute("INSERT INTO enrollments (student_id, course_id) VALUES (?,?)", (student_id, course_id))
     conn.commit()
 
-def delete_lesson(lesson_id):
-    c.execute("DELETE FROM lessons WHERE lesson_id=?", (lesson_id,))
-    conn.commit()
+def get_student_courses(student_id):
+    c.execute("SELECT courses.id, courses.name, courses.description, courses.amount FROM courses "
+              "JOIN enrollments ON courses.id=enrollments.course_id WHERE enrollments.student_id=?", (student_id,))
+    return c.fetchall()
 
 # ---------------------------
-# Page Config + CSS
+# CSS Styling
 # ---------------------------
-st.set_page_config(page_title="EinTrust Academy", layout="wide")
-
 st.markdown("""
-    <style>
-        body {background-color: #0d0f12; color: #e0e0e0;}
-        .stApp {background-color: #0d0f12; color: #e0e0e0;}
-        .stTextInput > div > div > input,
-        .stSelectbox > div > div > select,
-        .stTextArea > div > textarea,
-        .stNumberInput > div > input {
-            background-color: #1e1e1e; color: #f5f5f5; border: 1px solid #333333; border-radius: 6px;
-        }
-        .unique-btn button {background-color: #4CAF50 !important; color: white !important; border-radius: 8px !important; border: none !important; padding: 10px 20px !important; font-weight: bold !important;}
-        .unique-btn button:hover {background-color: #45a049 !important; color: #ffffff !important;}
-        .course-card {background: #1c1c1c; border-radius: 12px; padding: 16px; margin: 12px; box-shadow: 0px 4px 10px rgba(0,0,0,0.6); position: relative;}
-        .course-title {font-size: 22px; font-weight: bold; color: #f0f0f0;}
-        .course-subtitle {font-size: 16px; color: #b0b0b0;}
-        .course-desc {font-size: 14px; color: #cccccc; margin-top: 8px; margin-bottom: 40px;}
-        .course-footer {position: absolute; bottom: 16px; left: 16px; right: 16px; display: flex; justify-content: space-between; align-items: center;}
-        .course-footer button {background-color: #4CAF50 !important; color: white !important; border-radius: 6px !important; border: none !important; padding: 8px 16px !important; font-weight: bold !important;}
-        .course-footer button:hover {background-color: #45a049 !important; color: #ffffff !important;}
-        .admin-toggle button {background-color: #2e2e2e !important; color: #ffffff !important; border-radius: 8px !important; padding: 10px 16px !important; margin-right: 10px;}
-        .admin-toggle button:hover {background-color: #4CAF50 !important; color: white !important;}
-        .section-header {border-bottom: 1px solid #333333; padding-bottom: 8px; margin-bottom: 10px; font-size: 20px;}
-    </style>
+<style>
+body {
+    background-color: #111111;
+    color: white;
+}
+.stButton>button {
+    background-color: #444444;
+    color: white;
+    border-radius: 8px;
+    padding: 6px 16px;
+    margin: 5px;
+    font-size: 14px;
+}
+.stButton>button:hover {
+    background-color: #666666;
+    color: white;
+}
+.course-card {
+    background-color: #1e1e1e;
+    padding: 15px;
+    border-radius: 10px;
+    box-shadow: 0 0 8px rgba(255,255,255,0.1);
+    margin: 10px;
+}
+.course-title {
+    font-size: 18px;
+    font-weight: bold;
+    color: #ffffff;
+}
+.course-desc {
+    font-size: 14px;
+    color: #cccccc;
+    margin-bottom: 30px;
+}
+.course-footer {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+</style>
 """, unsafe_allow_html=True)
 
 # ---------------------------
-# Display Courses with Enroll inside card
+# Components
 # ---------------------------
 def display_courses_grid(courses, student_id=None):
-    if not courses:
-        st.info("No courses available.")
-        return
-    cols = st.columns(2)
+    cols = st.columns(3)
     for idx, course in enumerate(courses):
-        with cols[idx % 2]:
-            # Render course card with HTML
+        with cols[idx % 3]:
             st.markdown(f"""
             <div class="course-card">
                 <div class="course-title">{course[1]}</div>
-                <div class="course-desc">{course[3]}</div>
+                <div class="course-desc">{course[2]}</div>
                 <div class="course-footer">
-                    <button id="enroll_{course[0]}">Enroll</button>
-                    <span style="color:#f5f5f5; font-weight:bold;">{"Free" if course[4]==0 else f"₹{course[4]:,.0f}"}</span>
+                    <form action="" method="post">
+                        <button type="submit" name="enroll_{course[0]}">Enroll</button>
+                    </form>
+                    <div>₹ {course[3]}</div>
                 </div>
             </div>
             """, unsafe_allow_html=True)
-            # Streamlit enroll button functional
-            if st.button(f"Enroll-{course[0]}", key=f"enroll_streamlit_{course[0]}"):
-                if student_id:
-                    enroll_student_in_course(student_id, course[0])
-                    st.success(f"Enrolled in {course[1]}!")
-                else:
+
+            if st.session_state.get("page") == "student_dashboard" and student_id:
+                if st.button(f"Enroll {course[0]}", key=f"enroll_{course[0]}_student"):
+                    enroll_student(student_id, course[0])
+                    st.success(f"Enrolled in {course[1]} successfully!")
+            elif st.session_state.get("page") == "home":
+                if st.button(f"Enroll {course[0]}", key=f"enroll_{course[0]}_home"):
                     st.session_state["page"] = "signup"
                     st.experimental_rerun()
 
@@ -194,37 +176,31 @@ def display_courses_grid(courses, student_id=None):
 # Pages
 # ---------------------------
 def page_home():
-    st.image("https://github.com/eintrusts/CAP/blob/main/EinTrust%20%20(2).png?raw=true", width=180)
-    st.header("Courses")
+    st.header("Welcome to EinTrust Academy")
     courses = get_courses()
-    display_courses_grid(courses)
+    if courses:
+        display_courses_grid(courses)
+    else:
+        st.info("No courses available yet.")
 
 def page_signup():
-    st.image("https://github.com/eintrusts/CAP/blob/main/EinTrust%20%20(2).png?raw=true", width=180)
-    st.header("Create Profile")
-    with st.form("signup_form"):
-        full_name = st.text_input("Full Name")
-        email = st.text_input("Email ID")
-        password = st.text_input("Password", type="password", help="Min 8 chars, 1 uppercase, 1 number, 1 special char")
-        gender = st.selectbox("Gender", ["Male","Female","Other"])
-        profession = st.text_input("Profession")
-        institution = st.text_input("Institution")
-        submitted = st.form_submit_button("Submit")
-        if submitted:
-            if not is_valid_email(email):
-                st.error("Enter a valid email address.")
-            elif not is_valid_password(password):
-                st.error("Password must have 8+ chars, 1 uppercase, 1 number, 1 special char.")
-            else:
-                success = add_student(full_name, email, password, gender, profession, institution)
-                if success:
-                    st.success("Profile created successfully! Please login.")
-                    st.session_state["page"] = "login"
-                else:
-                    st.error("Email already registered. Please login.")
+    st.header("Student Signup")
+    full_name = st.text_input("Full Name")
+    email = st.text_input("Email")
+    password = st.text_input("Password", type="password")
+    gender = st.selectbox("Gender", ["Male","Female","Other"])
+    profession = st.text_input("Profession")
+    institution = st.text_input("Institution")
+    if st.button("Signup"):
+        success = add_student(full_name, email, password, gender, profession, institution)
+        if success:
+            st.success("Profile created successfully! Please login.")
+            st.session_state["page"] = "login"
+            st.experimental_rerun()
+        else:
+            st.error("Email already registered. Please login.")
 
 def page_login():
-    st.image("https://github.com/eintrusts/CAP/blob/main/EinTrust%20%20(2).png?raw=true", width=180)
     st.header("Student Login")
     email = st.text_input("Email ID", key="login_email")
     password = st.text_input("Password", type="password", key="login_pass")
@@ -238,11 +214,10 @@ def page_login():
             st.error("Invalid credentials.")
 
 def page_student_dashboard():
-    st.image("https://github.com/eintrusts/CAP/blob/main/EinTrust%20%20(2).png?raw=true", width=180)
     st.header("Student Dashboard")
     student = st.session_state.get("student")
     if student:
-        st.subheader(f"{student[1]}")
+        st.subheader(f"Welcome, {student[1]}")
         st.write("---")
         st.subheader("Your Enrolled Courses")
         courses = get_student_courses(student[0])
@@ -254,94 +229,79 @@ def page_student_dashboard():
     else:
         st.warning("Please login first.")
 
-# ---------------------------
-# ADMIN PAGES
-# ---------------------------
-def page_admin():
-    st.image("https://github.com/eintrusts/CAP/blob/main/EinTrust%20%20(2).png?raw=true", width=180)
+def page_admin_login():
     st.header("Admin Login")
-    admin_pass = st.text_input("Enter Admin Password", type="password")
+    email = st.text_input("Admin Email")
+    password = st.text_input("Admin Password", type="password")
     if st.button("Login as Admin"):
-        if admin_pass == "eintrust2025":
+        if email == "admin@example.com" and password == "admin123":
+            st.session_state["admin"] = True
             st.session_state["page"] = "admin_dashboard"
             st.experimental_rerun()
         else:
-            st.error("Wrong admin password.")
+            st.error("Invalid admin credentials.")
 
 def page_admin_dashboard():
-    st.image("https://github.com/eintrusts/CAP/blob/main/EinTrust%20%20(2).png?raw=true", width=180)
-    st.header("Admin Dashboard")
-    if st.button("Logout"):
-        st.session_state.clear()
-        st.experimental_rerun()
+    st.sidebar.title("Admin Panel")
+    choice = st.sidebar.radio("Navigation", ["Dashboard", "Courses", "Students", "Lessons", "Logout"])
 
-    tab1, tab2, tab3, tab4 = st.tabs(["Dashboard", "Students", "Courses", "Lessons"])
-
-    with tab1:
-        st.subheader("Dashboard Overview")
-        total_students = c.execute("SELECT COUNT(*) FROM students").fetchone()[0]
-        total_courses = c.execute("SELECT COUNT(*) FROM courses").fetchone()[0]
-        total_lessons = c.execute("SELECT COUNT(*) FROM lessons").fetchone()[0]
-        st.write(f"Total Students: {total_students}")
-        st.write(f"Total Courses: {total_courses}")
-        st.write(f"Total Lessons: {total_lessons}")
-
-    with tab2:
-        st.subheader("Manage Students")
-        students = c.execute("SELECT * FROM students").fetchall()
-        for s in students:
-            st.write(f"{s[0]}. {s[1]} | {s[2]} | {s[4]} | {s[5]} | {s[6]}")
-            if st.button(f"Delete {s[1]}", key=f"del_student_{s[0]}"):
-                c.execute("DELETE FROM students WHERE student_id=?", (s[0],))
-                conn.commit()
-                st.success(f"Deleted {s[1]}")
-                st.experimental_rerun()
-
-    with tab3:
+    if choice == "Dashboard":
+        st.subheader("Admin Dashboard")
+    elif choice == "Courses":
         st.subheader("Manage Courses")
         courses = get_courses()
         for course in courses:
-            st.write(f"{course[0]}. {course[1]} | {course[2]} | ₹{course[4]:,.0f}")
-            if st.button(f"Delete {course[1]}", key=f"del_course_{course[0]}"):
+            st.write(f"**{course[1]}** - ₹{course[3]}")
+            if st.button(f"Edit {course[0]}", key=f"edit_{course[0]}"):
+                new_name = st.text_input("New Name", value=course[1], key=f"name_{course[0]}")
+                new_desc = st.text_area("New Description", value=course[2], key=f"desc_{course[0]}")
+                new_amt = st.number_input("New Amount", value=course[3], key=f"amt_{course[0]}")
+                if st.button("Update", key=f"update_{course[0]}"):
+                    update_course(course[0], new_name, new_desc, new_amt)
+                    st.success("Course updated!")
+            if st.button(f"Delete {course[0]}", key=f"del_{course[0]}"):
                 delete_course(course[0])
-                st.success(f"Deleted {course[1]}")
-                st.experimental_rerun()
-        st.markdown("---")
-        st.subheader("Add New Course")
-        with st.form("add_course_form"):
-            title = st.text_input("Title")
-            subtitle = st.text_input("Subtitle")
-            desc = st.text_area("Description")
-            price = st.number_input("Price", min_value=0.0, step=1.0)
-            if st.form_submit_button("Add Course"):
-                add_course(title, subtitle, desc, price)
-                st.success("Course added!")
-                st.experimental_rerun()
+                st.success("Course deleted!")
 
-    with tab4:
+        st.write("---")
+        st.subheader("Add New Course")
+        name = st.text_input("Course Name", key="new_name")
+        desc = st.text_area("Description", key="new_desc")
+        amt = st.number_input("Amount (INR)", min_value=0, key="new_amt")
+        if st.button("Add Course"):
+            add_course(name, desc, amt)
+            st.success("Course added!")
+
+    elif choice == "Students":
+        st.subheader("All Students")
+        c.execute("SELECT full_name, email, profession FROM students")
+        rows = c.fetchall()
+        for row in rows:
+            st.write(row)
+
+    elif choice == "Lessons":
         st.subheader("Manage Lessons")
-        lessons = c.execute("SELECT lesson_id, title, course_id FROM lessons").fetchall()
-        for l in lessons:
-            course_name = c.execute("SELECT title FROM courses WHERE course_id=?", (l[2],)).fetchone()[0]
-            st.write(f"{l[0]}. {l[1]} | Course: {course_name}")
-            if st.button(f"Delete Lesson {l[1]}", key=f"del_lesson_{l[0]}"):
-                delete_lesson(l[0])
-                st.success(f"Deleted lesson {l[1]}")
-                st.experimental_rerun()
-        st.markdown("---")
-        st.subheader("Add New Lesson")
-        with st.form("add_lesson_form"):
-            course_id = st.selectbox("Select Course", [c[0] for c in get_courses()])
-            title = st.text_input("Lesson Title")
-            desc = st.text_area("Lesson Description")
-            lesson_type = st.selectbox("Type", ["Video", "PDF", "PPT", "Link"])
-            uploaded_file = st.file_uploader("Upload File (if applicable)")
-            link = st.text_input("External Link (if applicable)")
-            if st.form_submit_button("Add Lesson"):
-                file_bytes = convert_file_to_bytes(uploaded_file)
-                add_lesson(course_id, title, desc, lesson_type, file_bytes, link)
-                st.success("Lesson added!")
-                st.experimental_rerun()
+        courses = get_courses()
+        course_options = {c[1]: c[0] for c in courses}
+        selected_course = st.selectbox("Select Course", list(course_options.keys()))
+        course_id = course_options[selected_course]
+        lessons = get_lessons(course_id)
+        for lesson in lessons:
+            st.write(f"**{lesson[1]}** - {lesson[2]}")
+        st.write("---")
+        st.subheader("Add Lesson")
+        title = st.text_input("Lesson Title")
+        ctype = st.selectbox("Content Type", ["Video","PDF","PPT","Link"])
+        content = st.text_input("Content (URL or Path)")
+        ldesc = st.text_area("Lesson Description")
+        if st.button("Add Lesson"):
+            add_lesson(course_id, title, ctype, content, ldesc)
+            st.success("Lesson added!")
+
+    elif choice == "Logout":
+        st.session_state.clear()
+        st.session_state["page"] = "home"
+        st.experimental_rerun()
 
 # ---------------------------
 # Main Navigation
@@ -354,8 +314,12 @@ if st.session_state["page"] == "home":
     with tabs[0]: page_home()
     with tabs[1]: page_signup()
     with tabs[2]: page_login()
-    with tabs[3]: page_admin()
-elif st.session_state["page"] == "signup": page_signup()
-elif st.session_state["page"] == "login": page_login()
-elif st.session_state["page"] == "student_dashboard": page_student_dashboard()
-elif st.session_state["page"] == "admin_dashboard": page_admin_dashboard()
+    with tabs[3]: page_admin_login()
+elif st.session_state["page"] == "signup":
+    page_signup()
+elif st.session_state["page"] == "login":
+    page_login()
+elif st.session_state["page"] == "student_dashboard":
+    page_student_dashboard()
+elif st.session_state["page"] == "admin_dashboard":
+    page_admin_dashboard()
