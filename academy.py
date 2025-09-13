@@ -4,6 +4,7 @@ import re
 from PIL import Image
 import io
 import base64
+import bcrypt
 
 # --- Constants and Config ---
 PAGE_TITLE = "EinTrust Academy"
@@ -90,26 +91,29 @@ def get_lessons(course_id):
     return c.execute("SELECT * FROM lessons WHERE course_id=? ORDER BY lesson_order ASC", (course_id,)).fetchall()
 
 def add_user(full_name, email, password, role='student'):
-    """Adds a new user to the database."""
+    """Adds a new user to the database with a hashed password."""
     try:
+        hashed_password = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
         c.execute("INSERT INTO users (full_name, email, password, role) VALUES (?, ?, ?, ?)",
-                  (full_name, email, password, role))
+                  (full_name, email, hashed_password, role))
         conn.commit()
         return True
     except sqlite3.IntegrityError:
         return False
 
 def authenticate_user(email, password):
-    """Authenticates a user based on email and password."""
-    user = c.execute("SELECT * FROM users WHERE email=? AND password=?", (email, password)).fetchone()
-    if user:
-        st.session_state['user'] = {
-            'id': user[0],
-            'full_name': user[1],
-            'email': user[2],
-            'role': user[4]
-        }
-        return True
+    """Authenticates a user based on email and a hashed password comparison."""
+    user_data = c.execute("SELECT user_id, full_name, email, password, role FROM users WHERE email=?", (email,)).fetchone()
+    if user_data:
+        user_id, full_name, user_email, hashed_password, role = user_data
+        if bcrypt.checkpw(password.encode('utf-8'), hashed_password.encode('utf-8')):
+            st.session_state['user'] = {
+                'id': user_id,
+                'full_name': full_name,
+                'email': user_email,
+                'role': role
+            }
+            return True
     return False
 
 def is_user_enrolled(user_id, course_id):
@@ -216,6 +220,11 @@ def get_logo_base64():
     </svg>
     """
     return base64.b64encode(svg.encode('utf-8')).decode('utf-8')
+
+def navigate_to(page_name):
+    """A helper function for cleaner page navigation."""
+    st.session_state['page'] = page_name
+    st.experimental_rerun()
 
 # --- Page Layouts ---
 
@@ -340,12 +349,6 @@ def page_student_dashboard():
         for idx, course in enumerate(all_courses):
             with cols[idx % 2]:
                 is_enrolled = is_user_enrolled(user['id'], course[0])
-                if not is_enrolled:
-                    if st.button(f"Enroll in {course[1]}", key=f"enroll_{course[0]}", use_container_width=True):
-                        if enroll_user_in_course(user['id'], course[0]):
-                            st.success(f"Successfully enrolled in {course[1]}!")
-                            st.experimental_rerun()
-                
                 with st.container():
                     st.markdown(f"""
                     <div class="course-card">
@@ -356,6 +359,11 @@ def page_student_dashboard():
                         {"<p style='font-size: 1rem; color: #4CAF50;'>✅ Enrolled</p>" if is_enrolled else ""}
                     </div>
                     """, unsafe_allow_html=True)
+                    if not is_enrolled:
+                        if st.button(f"Enroll in {course[1]}", key=f"enroll_{course[0]}", use_container_width=True):
+                            if enroll_user_in_course(user['id'], course[0]):
+                                st.success(f"Successfully enrolled in {course[1]}!")
+                                st.experimental_rerun()
 
 def page_admin_dashboard():
     """The dashboard for managing the platform, accessible only to admins."""
