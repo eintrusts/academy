@@ -158,6 +158,7 @@ body {background-color: #0d0f12; color: #e0e0e0;}
 .course-subtitle {font-size: 16px; color: #b0b0b0;}
 .course-desc {font-size: 14px; color: #cccccc;}
 .section-header {border-bottom: 1px solid #333333; padding-bottom: 8px; margin-bottom: 10px; font-size: 20px;}
+.center {text-align: center;}
 </style>
 """, unsafe_allow_html=True)
 
@@ -196,17 +197,25 @@ def display_courses(courses, enroll=False, student_id=None, show_lessons=False, 
                         st.write(f"- {l[2]} ({l[4]})")
 
 # ---------------------------
+# Common Layout for All Pages
+# ---------------------------
+def display_logo_and_title():
+    st.markdown('<div class="center">', unsafe_allow_html=True)
+    st.image("https://github.com/eintrusts/CAP/blob/main/EinTrust%20%20(2).png?raw=true", width=180)
+    st.markdown("<h2>EinTrust Academy</h2>", unsafe_allow_html=True)
+    st.markdown('</div>', unsafe_allow_html=True)
+
+# ---------------------------
 # Pages
 # ---------------------------
 def page_home():
-    st.image("https://github.com/eintrusts/CAP/blob/main/EinTrust%20%20(2).png?raw=true", width=180)
-    st.header("Courses")
+    display_logo_and_title()
     student_id = st.session_state.get("student", [None])[0] if "student" in st.session_state else None
     courses = get_courses()
     display_courses(courses, enroll=True, student_id=student_id)
 
 def page_signup():
-    st.image("https://github.com/eintrusts/CAP/blob/main/EinTrust%20%20(2).png?raw=true", width=180)
+    display_logo_and_title()
     st.header("Create Profile")
     with st.form("signup_form"):
         full_name = st.text_input("Full Name")
@@ -230,7 +239,7 @@ def page_signup():
                     st.error("Email already registered. Please login.")
 
 def page_login():
-    st.image("https://github.com/eintrusts/CAP/blob/main/EinTrust%20%20(2).png?raw=true", width=180)
+    display_logo_and_title()
     st.header("Student Login")
     email = st.text_input("Email ID", key="login_email")
     password = st.text_input("Password", type="password", key="login_pass")
@@ -244,7 +253,7 @@ def page_login():
             st.error("Invalid credentials.")
 
 def page_student_dashboard():
-    st.image("https://github.com/eintrusts/CAP/blob/main/EinTrust%20%20(2).png?raw=true", width=180)
+    display_logo_and_title()
     st.header("Student Dashboard")
     student = st.session_state.get("student")
     if student:
@@ -268,7 +277,7 @@ def page_student_dashboard():
 # Admin Pages
 # ---------------------------
 def page_admin():
-    st.image("https://github.com/eintrusts/CAP/blob/main/EinTrust%20%20(2).png?raw=true", width=180)
+    display_logo_and_title()
     st.header("Admin Login")
     admin_pass = st.text_input("Enter Admin Password", type="password")
     if st.button("Login as Admin"):
@@ -279,7 +288,7 @@ def page_admin():
             st.error("Wrong admin password.")
 
 def page_admin_dashboard():
-    st.image("https://github.com/eintrusts/CAP/blob/main/EinTrust%20%20(2).png?raw=true", width=180)
+    display_logo_and_title()
     st.header("Admin Dashboard")
 
     tab1, tab2, tab3 = st.tabs(["Dashboard", "Students", "Courses & Lessons"])
@@ -341,23 +350,10 @@ def page_admin_dashboard():
             st.experimental_rerun()
 
 # ---------------------------
-# Main Navigation
+# Edit Course Page
 # ---------------------------
-if "page" not in st.session_state:
-    st.session_state["page"] = "home"
-
-if st.session_state["page"] == "home":
-    tabs = st.tabs(["Home", "Signup", "Login", "Admin"])
-    with tabs[0]: page_home()
-    with tabs[1]: page_signup()
-    with tabs[2]: page_login()
-    with tabs[3]: page_admin()
-elif st.session_state["page"] == "signup": page_signup()
-elif st.session_state["page"] == "login": page_login()
-elif st.session_state["page"] == "student_dashboard": page_student_dashboard()
-elif st.session_state["page"] == "admin_dashboard": page_admin_dashboard()
-elif st.session_state["page"] == "edit_course":
-    # Page for editing course
+def page_edit_course():
+    display_logo_and_title()
     course = st.session_state.get("edit_course")
     if course:
         st.header(f"Edit Course: {course[1]}")
@@ -371,3 +367,22 @@ elif st.session_state["page"] == "edit_course":
                 st.success("Course updated!")
                 st.session_state["page"] = "admin_dashboard"
                 st.experimental_rerun()
+
+# ---------------------------
+# Main Navigation
+# ---------------------------
+if "page" not in st.session_state:
+    st.session_state["page"] = "home"
+
+# Always show logo and tabs first
+display_logo_and_title()
+tabs = st.tabs(["Home", "Signup", "Login", "Admin"])
+with tabs[0]: st.session_state["page"] = "home"; page_home()
+with tabs[1]: st.session_state["page"] = "signup"; page_signup()
+with tabs[2]: st.session_state["page"] = "login"; page_login()
+with tabs[3]: st.session_state["page"] = "admin"; page_admin()
+
+# Render individual pages if navigated programmatically
+if st.session_state["page"] == "student_dashboard": page_student_dashboard()
+elif st.session_state["page"] == "admin_dashboard": page_admin_dashboard()
+elif st.session_state["page"] == "edit_course": page_edit_course()
