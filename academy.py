@@ -144,19 +144,19 @@ body {background-color: #0d0f12; color: #e0e0e0;}
 .course-title {font-size: 22px; font-weight: bold; color: #f0f0f0;}
 .course-subtitle {font-size: 16px; color: #b0b0b0;}
 .course-desc {font-size: 14px; color: #cccccc; margin-bottom: 12px;}
-.enroll-btn {background-color:#0a84ff;color:white;border:none;padding:8px 12px;border-radius:6px; cursor:pointer;}
-.center-container {display: flex; flex-direction: row; align-items: center; justify-content: center; gap:10px;}
-.center {text-align: center;}
+.enroll-btn {background-color:#0a84ff;color:white;border:none;padding:6px 10px;border-radius:6px; cursor:pointer;}
+.center-container {display: flex; flex-direction: row; align-items: center; justify-content: flex-start; gap:15px;}
+.center-title {font-size:28px; font-weight:bold; color:#f0f0f0;}
 </style>
 """, unsafe_allow_html=True)
 
 # ---------------------------
-# Central Header
+# Central Header (Logo + Title on same line)
 # ---------------------------
 def display_logo_and_title_center():
     st.markdown('<div class="center-container">', unsafe_allow_html=True)
-    st.image("https://github.com/eintrusts/CAP/blob/main/EinTrust%20%20(2).png?raw=true", width=60)
-    st.markdown("<h2 class='center'>EinTrust Academy</h2>", unsafe_allow_html=True)
+    st.image("https://github.com/eintrusts/CAP/blob/main/EinTrust%20%20(2).png?raw=true", width=50)
+    st.markdown("<div class='center-title'>EinTrust Academy</div>", unsafe_allow_html=True)
     st.markdown('</div>', unsafe_allow_html=True)
 
 # ---------------------------
@@ -213,7 +213,6 @@ def display_courses(courses, enroll=False, student_id=None, show_lessons=False, 
                 <p><b>Price:</b> {format_price(course[4])}</p>
             </div>
             """, unsafe_allow_html=True)
-            # Enroll button inside card
             if enroll:
                 if st.button("Enroll", key=f"enroll_{course[0]}"):
                     if "student" not in st.session_state:
@@ -297,15 +296,12 @@ def page_admin_dashboard():
 def page_home():
     active_tab = st.session_state.get("active_tab", "Courses")
     tabs = st.tabs(["Courses", "Student", "Admin"])
-    # Courses tab
     with tabs[0]:
         display_courses(get_courses(), enroll=True)
-    # Student tab
     with tabs[1]:
         sub_tabs = st.tabs(["Login", "Signup"])
         with sub_tabs[0]: page_login()
         with sub_tabs[1]: page_signup()
-    # Admin tab
     with tabs[2]:
         page_admin()
 
