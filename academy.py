@@ -151,6 +151,7 @@ st.markdown("""
         .course-title {font-size: 22px; font-weight: bold; color: #f0f0f0;}
         .course-subtitle {font-size: 16px; color: #b0b0b0;}
         .course-desc {font-size: 14px; color: #cccccc;}
+        .course-footer {display: flex; justify-content: space-between; margin-top: 12px;}
         .admin-toggle button {background-color: #2e2e2e !important; color: #ffffff !important; border-radius: 8px !important; padding: 10px 16px !important; margin-right: 10px;}
         .admin-toggle button:hover {background-color: #4CAF50 !important; color: white !important;}
         .section-header {border-bottom: 1px solid #333333; padding-bottom: 8px; margin-bottom: 10px; font-size: 20px;}
@@ -160,35 +161,31 @@ st.markdown("""
 # ---------------------------
 # Course Display Function
 # ---------------------------
-def display_courses_grid(courses, enroll_option=False, student_id=None, show_lessons=False):
+def display_courses_grid(courses, student_id=None, enroll_redirect=True):
     if not courses:
         st.info("No courses available.")
         return
     cols = st.columns(2)
     for idx, course in enumerate(courses):
         with cols[idx % 2]:
-            with st.container():
-                st.markdown(f"""
-                <div class="course-card">
-                    <div class="course-title">{course[1]}</div>
-                    <div class="course-subtitle">{course[2]}</div>
-                    <div class="course-desc">{course[3][:150]}...</div>
-                    <p><b>Price:</b> {"Free" if course[4]==0 else f"₹{course[4]:,.0f}"}</p>
-                </div>
-                """, unsafe_allow_html=True)
-
-                # Enroll button inside card
-                if enroll_option and student_id:
-                    if st.button("Enroll", key=f"enroll_{course[0]}", use_container_width=True):
+            st.markdown(f"""
+            <div class="course-card">
+                <div class="course-title">{course[1]}</div>
+                <div class="course-subtitle">{course[2]}</div>
+                <div class="course-desc">{course[3]}</div>
+            </div>
+            """, unsafe_allow_html=True)
+            col1, col2 = st.columns([1,1])
+            with col1:
+                if st.button("Enroll", key=f"enroll_{course[0]}"):
+                    if student_id:
                         enroll_student_in_course(student_id, course[0])
                         st.success(f"Enrolled in {course[1]}!")
-
-                if show_lessons:
-                    lessons = get_lessons(course[0])
-                    if lessons:
-                        st.write("Lessons:")
-                        for l in lessons:
-                            st.write(f"- {l[2]} ({l[4]})")
+                    else:
+                        st.session_state["page"] = "signup"
+                        st.experimental_rerun()
+            with col2:
+                st.markdown(f"**₹{course[4]:,.0f}**")
 
 # ---------------------------
 # Pages
@@ -197,7 +194,7 @@ def page_home():
     st.image("https://github.com/eintrusts/CAP/blob/main/EinTrust%20%20(2).png?raw=true", width=180)
     st.header("Courses")
     courses = get_courses()
-    display_courses_grid(courses, enroll_option=True, student_id=st.session_state.get("student")[0] if st.session_state.get("student") else None)
+    display_courses_grid(courses)
 
 def page_signup():
     st.image("https://github.com/eintrusts/CAP/blob/main/EinTrust%20%20(2).png?raw=true", width=180)
@@ -242,11 +239,11 @@ def page_student_dashboard():
     st.header("Student Dashboard")
     student = st.session_state.get("student")
     if student:
-        st.subheader(f"{student[1]}")
+        st.subheader(f"Welcome, {student[1]}")
         st.write("---")
         st.subheader("Your Enrolled Courses")
         courses = get_student_courses(student[0])
-        display_courses_grid(courses, enroll_option=False, student_id=student[0], show_lessons=True)
+        display_courses_grid(courses, student_id=student[0], enroll_redirect=False)
         if st.button("Logout"):
             st.session_state.clear()
             st.experimental_rerun()
@@ -270,8 +267,10 @@ def page_admin():
 def page_admin_dashboard():
     st.image("https://github.com/eintrusts/CAP/blob/main/EinTrust%20%20(2).png?raw=true", width=180)
     st.header("Admin Dashboard")
+
     if st.button("Logout"):
         st.session_state.clear()
+        st.session_state["page"] = "home"
         st.experimental_rerun()
 
     tab1, tab2, tab3 = st.tabs(["Dashboard", "Students", "Courses & Lessons"])
@@ -300,33 +299,36 @@ def page_admin_dashboard():
         st.subheader("Manage Courses & Lessons")
         courses = get_courses()
         for course in courses:
-            st.write(f"{course[0]}. {course[1]} | {course[2]} | ₹{course[4]:,.0f}")
+            st.markdown(f"### {course[1]} | ₹{course[4]:,.0f}")
+            st.write(course[3])
             col1, col2 = st.columns(2)
             with col1:
-                if st.button(f"Edit {course[0]}", key=f"edit_course_{course[0]}"):
-                    st.session_state["edit_course"] = course
+                if st.button(f"Edit Course", key=f"edit_course_{course[0]}"):
+                    st.session_state["edit_course"] = course[0]
+                    st.session_state["page"] = "edit_course"
                     st.experimental_rerun()
             with col2:
-                if st.button(f"Delete {course[0]}", key=f"del_course_{course[0]}"):
+                if st.button(f"Delete Course", key=f"del_course_{course[0]}"):
                     delete_course(course[0])
                     st.success(f"Deleted {course[1]}")
                     st.experimental_rerun()
 
-        # Edit course if selected
-        if "edit_course" in st.session_state:
-            course = st.session_state["edit_course"]
-            st.markdown("---")
-            st.subheader(f"Edit Course: {course[1]}")
-            with st.form("edit_course_form"):
-                title = st.text_input("Title", value=course[1])
-                subtitle = st.text_input("Subtitle", value=course[2])
-                desc = st.text_area("Description", value=course[3])
-                price = st.number_input("Price", min_value=0.0, value=course[4], step=1.0)
-                if st.form_submit_button("Update Course"):
-                    update_course(course[0], title, subtitle, desc, price)
-                    st.success("Course updated!")
-                    st.session_state.pop("edit_course")
-                    st.experimental_rerun()
+            lessons = get_lessons(course[0])
+            if lessons:
+                st.markdown("**Lessons:**")
+                for l in lessons:
+                    st.write(f"- {l[2]} ({l[4]})")
+                    col_l1, col_l2 = st.columns(2)
+                    with col_l1:
+                        if st.button(f"Edit Lesson {l[2]}", key=f"edit_lesson_{l[0]}"):
+                            st.session_state["edit_lesson"] = l[0]
+                            st.session_state["page"] = "edit_lesson"
+                            st.experimental_rerun()
+                    with col_l2:
+                        if st.button(f"Delete Lesson {l[2]}", key=f"del_lesson_{l[0]}"):
+                            delete_lesson(l[0])
+                            st.success(f"Deleted lesson {l[2]}")
+                            st.experimental_rerun()
 
         st.markdown("---")
         st.subheader("Add New Course")
@@ -338,21 +340,6 @@ def page_admin_dashboard():
             if st.form_submit_button("Add Course"):
                 add_course(title, subtitle, desc, price)
                 st.success("Course added!")
-                st.experimental_rerun()
-
-        st.markdown("---")
-        st.subheader("Add New Lesson")
-        with st.form("add_lesson_form"):
-            course_id = st.selectbox("Select Course", [c[0] for c in get_courses()])
-            title = st.text_input("Lesson Title")
-            desc = st.text_area("Lesson Description")
-            lesson_type = st.selectbox("Type", ["Video", "PDF", "PPT", "Link"])
-            uploaded_file = st.file_uploader("Upload File (if applicable)")
-            link = st.text_input("External Link (if applicable)")
-            if st.form_submit_button("Add Lesson"):
-                file_bytes = convert_file_to_bytes(uploaded_file)
-                add_lesson(course_id, title, desc, lesson_type, file_bytes, link)
-                st.success("Lesson added!")
                 st.experimental_rerun()
 
 # ---------------------------
