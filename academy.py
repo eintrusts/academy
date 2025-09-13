@@ -154,39 +154,6 @@ body {background-color: #0d0f12; color: #e0e0e0;}
 """, unsafe_allow_html=True)
 
 # ---------------------------
-# Display Courses
-# ---------------------------
-def display_courses(courses, enroll=False, student_id=None, show_lessons=False, editable=False):
-    if not courses:
-        st.info("No courses available.")
-        return
-    cols = st.columns(2)
-    for idx, course in enumerate(courses):
-        with cols[idx % 2]:
-            st.markdown(f"""
-            <div class="course-card">
-                <div class="course-title">{course[1]}</div>
-                <div class="course-subtitle">{course[2]}</div>
-                <div class="course-desc">{course[3][:150]}...</div>
-                <p><b>Price:</b> {format_price(course[4])}</p>
-            </div>
-            """, unsafe_allow_html=True)
-            if enroll and student_id:
-                if st.button("Enroll", key=f"enroll_{course[0]}", use_container_width=True):
-                    enroll_student_in_course(student_id, course[0])
-                    st.success(f"Enrolled in {course[1]}!")
-            if editable:
-                if st.button("Edit Course", key=f"edit_{course[0]}", use_container_width=True):
-                    st.session_state["edit_course"] = course
-                    st.session_state["page"] = "edit_course"
-            if show_lessons:
-                lessons = get_lessons(course[0])
-                if lessons:
-                    st.write("Lessons:")
-                    for l in lessons:
-                        st.write(f"- {l[2]} ({l[4]})")
-
-# ---------------------------
 # Central Header
 # ---------------------------
 def display_logo_and_title_center():
@@ -194,28 +161,6 @@ def display_logo_and_title_center():
     st.image("https://github.com/eintrusts/CAP/blob/main/EinTrust%20%20(2).png?raw=true", width=180)
     st.markdown("<h2 class='center'>EinTrust Academy</h2>", unsafe_allow_html=True)
     st.markdown('</div>', unsafe_allow_html=True)
-
-# ---------------------------
-# Pages
-# ---------------------------
-def page_home():
-    student_id = st.session_state.get("student", [None])[0] if "student" in st.session_state else None
-    tabs = st.tabs(["Courses", "Student", "Admin"])
-    
-    with tabs[0]:
-        st.subheader("All Courses")
-        courses = get_courses()
-        display_courses(courses, enroll=True, student_id=student_id)
-
-    with tabs[1]:
-        st.subheader("Student")
-        sub_tabs = st.tabs(["Login", "Signup"])
-        with sub_tabs[0]: page_login()
-        with sub_tabs[1]: page_signup()
-    
-    with tabs[2]:
-        st.subheader("Admin")
-        page_admin()
 
 # ---------------------------
 # Student Pages
@@ -362,6 +307,39 @@ def page_edit_course():
                 update_course(course[0], title, subtitle, desc, price)
                 st.success("Course updated!")
                 st.session_state["page"] = "admin_dashboard"
+
+# ---------------------------
+# Home Page
+# ---------------------------
+def page_home():
+    student_id = st.session_state.get("student", [None])[0] if "student" in st.session_state else None
+    tabs = st.tabs(["Courses", "Student", "Admin"])
+    
+    with tabs[0]:
+        st.subheader("All Courses")
+        courses = get_courses()
+        for course in courses:
+            st.markdown(f"""
+            <div class="course-card">
+                <div class="course-title">{course[1]}</div>
+                <div class="course-subtitle">{course[2]}</div>
+                <div class="course-desc">{course[3][:150]}...</div>
+                <p><b>Price:</b> {format_price(course[4])}</p>
+            </div>
+            """, unsafe_allow_html=True)
+            if st.button("Enroll", key=f"enroll_{course[0]}"):
+                st.session_state["page"] = "student_dashboard"
+                st.session_state["enroll_course"] = course[0]
+
+    with tabs[1]:
+        st.subheader("Student")
+        sub_tabs = st.tabs(["Login", "Signup"])
+        with sub_tabs[0]: page_login()
+        with sub_tabs[1]: page_signup()
+    
+    with tabs[2]:
+        st.subheader("Admin")
+        page_admin()
 
 # ---------------------------
 # Main Navigation
