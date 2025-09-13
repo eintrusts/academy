@@ -83,6 +83,16 @@ def add_student(full_name, email, password, gender, profession, institution):
     except sqlite3.IntegrityError:
         return False
 
+def update_student(student_id, full_name, email, password, gender, profession, institution):
+    try:
+        c.execute("""UPDATE students SET full_name=?, email=?, password=?, gender=?, profession=?, institution=? 
+                     WHERE student_id=?""",
+                  (full_name, email, password, gender, profession, institution, student_id))
+        conn.commit()
+        return True
+    except sqlite3.IntegrityError:
+        return False
+
 def authenticate_student(email, password):
     return c.execute("SELECT * FROM students WHERE email=? AND password=?", (email, password)).fetchone()
 
@@ -250,7 +260,6 @@ def page_login():
         else:
             st.error("Invalid credentials.")
 
-
 # ---------------------------
 # Student Dashboard
 # ---------------------------
@@ -260,22 +269,35 @@ def page_student_dashboard():
         st.warning("Please login first.")
         return
 
-    tabs = st.tabs(["Available Courses", "Enrolled Courses", "Profile"])
+    tabs = st.tabs(["All Courses", "My Courses", "Edit Profile"])
+    
     with tabs[0]:
-        st.subheader("Available Courses")
+        st.subheader("All Courses")
         courses = get_courses()
         display_courses(courses, enroll=True, student_id=student[0])
+        
     with tabs[1]:
-        st.subheader("Your Enrolled Courses")
+        st.subheader("My Courses")
         enrolled_courses = get_student_courses(student[0])
         display_courses(enrolled_courses, show_lessons=True)
+        
     with tabs[2]:
-        st.subheader("Profile")
-        st.write(f"**Full Name:** {student[1]}")
-        st.write(f"**Email:** {student[2]}")
-        st.write(f"**Gender:** {student[4]}")
-        st.write(f"**Profession:** {student[5]}")
-        st.write(f"**Institution:** {student[6]}")
+        st.subheader("Edit Profile")
+        with st.form("edit_profile_form"):
+            full_name = st.text_input("Full Name", value=student[1])
+            email = st.text_input("Email ID", value=student[2])
+            password = st.text_input("Password", type="password", value=student[3])
+            gender = st.selectbox("Gender", ["Male","Female","Other"], index=["Male","Female","Other"].index(student[4]))
+            profession = st.text_input("Profession", value=student[5])
+            institution = st.text_input("Institution", value=student[6])
+            if st.form_submit_button("Update Profile"):
+                success = update_student(student[0], full_name, email, password, gender, profession, institution)
+                if success:
+                    st.success("Profile updated successfully!")
+                    st.session_state["student"] = authenticate_student(email, password)
+                    st.experimental_rerun()
+                else:
+                    st.error("Email already exists. Please try a different one.")
 
     if st.button("Logout"):
         st.session_state.clear()
@@ -356,6 +378,7 @@ def page_admin_dashboard():
             st.session_state["page"] = "home"
             st.experimental_rerun()
 
+
 # ---------------------------
 # Edit Course Page
 # ---------------------------
@@ -373,6 +396,7 @@ def page_edit_course():
                 st.success("Course updated!")
                 st.session_state["page"] = "admin_dashboard"
                 st.experimental_rerun()
+
 
 # ---------------------------
 # Main Navigation
