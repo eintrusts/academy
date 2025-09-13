@@ -1,7 +1,6 @@
 import streamlit as st
 import sqlite3
 import re
-import io
 
 # ---------------------------
 # DB Setup
@@ -251,26 +250,42 @@ def page_login():
         else:
             st.error("Invalid credentials.")
 
+
+# ---------------------------
+# Student Dashboard
+# ---------------------------
 def page_student_dashboard():
-    st.header("Student Dashboard")
     student = st.session_state.get("student")
-    if student:
-        st.subheader(f"Welcome, {student[1]}")
-        st.write("---")
+    if not student:
+        st.warning("Please login first.")
+        return
+
+    tabs = st.tabs(["Available Courses", "Enrolled Courses", "Profile"])
+    with tabs[0]:
         st.subheader("Available Courses")
         courses = get_courses()
         display_courses(courses, enroll=True, student_id=student[0])
-
+    with tabs[1]:
         st.subheader("Your Enrolled Courses")
         enrolled_courses = get_student_courses(student[0])
         display_courses(enrolled_courses, show_lessons=True)
+    with tabs[2]:
+        st.subheader("Profile")
+        st.write(f"**Full Name:** {student[1]}")
+        st.write(f"**Email:** {student[2]}")
+        st.write(f"**Gender:** {student[4]}")
+        st.write(f"**Profession:** {student[5]}")
+        st.write(f"**Institution:** {student[6]}")
 
-        if st.button("Logout"):
-            st.session_state.clear()
-            st.experimental_rerun()
-    else:
-        st.warning("Please login first.")
+    if st.button("Logout"):
+        st.session_state.clear()
+        st.session_state["page"] = "home"
+        st.experimental_rerun()
 
+
+# ---------------------------
+# Admin Pages
+# ---------------------------
 def page_admin():
     st.header("Admin Login")
     admin_pass = st.text_input("Enter Admin Password", type="password")
@@ -282,7 +297,6 @@ def page_admin():
             st.error("Wrong admin password.")
 
 def page_admin_dashboard():
-    st.header("Admin Dashboard")
     tab1, tab2, tab3 = st.tabs(["Dashboard", "Students", "Courses & Lessons"])
 
     with tab1:
@@ -339,8 +353,12 @@ def page_admin_dashboard():
 
         if st.button("Logout"):
             st.session_state.clear()
+            st.session_state["page"] = "home"
             st.experimental_rerun()
 
+# ---------------------------
+# Edit Course Page
+# ---------------------------
 def page_edit_course():
     course = st.session_state.get("edit_course")
     if course:
@@ -361,15 +379,15 @@ def page_edit_course():
 # ---------------------------
 display_logo_and_title_center()
 
-# Show tabs only if not logged in as student/admin
-if "student" not in st.session_state and st.session_state.get("page") != "admin_dashboard":
+# Public pages tabs
+if "student" not in st.session_state and st.session_state.get("page") not in ["student_dashboard", "admin_dashboard", "edit_course"]:
     tabs = st.tabs(["Home", "Signup", "Login", "Admin"])
     with tabs[0]: page_home()
     with tabs[1]: page_signup()
     with tabs[2]: page_login()
     with tabs[3]: page_admin()
 else:
-    # Render page based on session state
+    # Render based on session/page
     if st.session_state.get("page") == "student_dashboard": page_student_dashboard()
     elif st.session_state.get("page") == "admin_dashboard": page_admin_dashboard()
     elif st.session_state.get("page") == "edit_course": page_edit_course()
