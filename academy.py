@@ -154,6 +154,7 @@ body {background-color: #0d0f12; color: #e0e0e0;}
 .course-desc {font-size: 14px; color: #cccccc;}
 .center-container {display: flex; flex-direction: row; align-items: center; justify-content: center; gap: 10px;}
 .center {text-align: center; font-family: 'Times New Roman', serif;}
+.enroll-btn {margin-top: 10px;}
 </style>
 """, unsafe_allow_html=True)
 
@@ -163,7 +164,7 @@ body {background-color: #0d0f12; color: #e0e0e0;}
 def display_logo_and_title():
     col1, col2 = st.columns([1,4])
     with col1:
-        st.image("https://github.com/eintrusts/CAP/blob/main/EinTrust%20%20(2).png?raw=true", width=120)
+        st.image("https://github.com/eintrusts/CAP/blob/main/EinTrust%20%20(2).png?raw=true", width=140)
     with col2:
         st.markdown("<h2 class='center'>EinTrust Academy</h2>", unsafe_allow_html=True)
 
@@ -185,18 +186,23 @@ def display_courses(courses, enroll=False, student_id=None, page_prefix="home"):
                 <p><b>Price:</b> {"Free" if course[4]==0 else f"₹{course[4]:,.0f}"}</p>
             </div>
             """, unsafe_allow_html=True)
-            # Enroll button below card
             if enroll and student_id:
                 key = f"{page_prefix}_enroll_{student_id}_{course[0]}"
                 if st.button("Enroll", key=key):
-                    enroll_student_in_course(student_id, course[0])
-                    st.success(f"Enrolled in {course[1]} successfully!")
+                    st.session_state["enroll_course_id"] = course[0]
+                    st.session_state["student_id_for_redirect"] = student_id
+                    st.session_state["redirect_to_student"] = True
 
 # ---------------------------
 # Home Page
 # ---------------------------
 def page_home():
     display_logo_and_title()
+    if st.session_state.get("redirect_to_student"):
+        st.session_state["page"] = "student"
+        st.session_state.pop("redirect_to_student")
+        st.experimental_rerun()
+
     tabs = st.tabs(["Courses","Student","Admin"])
     with tabs[0]:
         st.subheader("All Courses")
@@ -211,8 +217,11 @@ def page_home():
 # Student Page
 # ---------------------------
 def page_student():
-    tabs = st.tabs(["Login/Signup", "My Courses", "Edit Profile", "Logout"])
     student = st.session_state.get("student")
+    course_id = st.session_state.pop("enroll_course_id", None)
+    student_id_for_redirect = st.session_state.get("student_id_for_redirect", None)
+
+    tabs = st.tabs(["Login/Signup", "My Courses", "Edit Profile", "Logout"])
 
     # Login/Signup Tab
     with tabs[0]:
@@ -230,6 +239,9 @@ def page_student():
                         st.session_state["student"] = s
                         st.session_state["student_id"] = s[0]
                         st.success("Login Successful")
+                        if course_id:
+                            enroll_student_in_course(s[0], course_id)
+                            st.success("Enrolled in selected course!")
                         st.experimental_rerun()
                     else:
                         st.error("Invalid credentials")
@@ -258,7 +270,7 @@ def page_student():
         if student:
             enrolled_courses = get_student_courses(student[0])
             st.subheader("My Courses")
-            display_courses(enrolled_courses, enroll=False, page_prefix="student")
+            display_courses(enrolled_courses, enroll=False)
         else:
             st.info("Login to see your courses")
 
@@ -326,7 +338,7 @@ def manage_students():
     st.subheader("All Students")
     students = c.execute("SELECT * FROM students").fetchall()
     if students:
-        for idx, s in enumerate(students):
+        for s in students:
             cols = st.columns([1,2,2,2,2,2,1])
             cols[0].write(s[0])
             cols[1].write(s[1])
@@ -334,7 +346,7 @@ def manage_students():
             cols[3].write(s[4])
             cols[4].write(s[5])
             cols[5].write(s[6])
-            key_del = f"del_student_{s[0]}_{idx}"
+            key_del = f"del_student_{s[0]}"
             if cols[6].button("Delete", key=key_del):
                 c.execute("DELETE FROM students WHERE student_id=?", (s[0],))
                 conn.commit()
@@ -349,29 +361,29 @@ def manage_courses_modules():
     st.subheader("Courses")
     courses = get_courses()
     if courses:
-        for c_idx, course in enumerate(courses):
+        for course in courses:
             with st.expander(f"{course[1]} ({course[2]})"):
-                title = st.text_input("Title", value=course[1], key=f"course_title_{course[0]}_{c_idx}")
-                subtitle = st.text_input("Subtitle", value=course[2], key=f"course_subtitle_{course[0]}_{c_idx}")
-                desc = st.text_area("Description", value=course[3], key=f"course_desc_{course[0]}_{c_idx}")
-                price = st.number_input("Price", min_value=0.0, value=course[4], key=f"course_price_{course[0]}_{c_idx}")
-                if st.button("Update Course", key=f"update_course_{course[0]}_{c_idx}"):
+                title = st.text_input("Title", value=course[1], key=f"course_title_{course[0]}")
+                subtitle = st.text_input("Subtitle", value=course[2], key=f"course_subtitle_{course[0]}")
+                desc = st.text_area("Description", value=course[3], key=f"course_desc_{course[0]}")
+                price = st.number_input("Price", min_value=0.0, value=course[4], key=f"course_price_{course[0]}")
+                if st.button("Update Course", key=f"update_course_{course[0]}"):
                     update_course(course[0], title, subtitle, desc, price)
                     st.success("Course updated successfully")
                     st.experimental_rerun()
-                if st.button("Delete Course", key=f"delete_course_{course[0]}_{c_idx}"):
+                if st.button("Delete Course", key=f"delete_course_{course[0]}"):
                     delete_course(course[0])
                     st.success("Course deleted")
                     st.experimental_rerun()
-                # Modules
+
                 modules = get_modules(course[0])
                 st.markdown("**Modules**")
-                for m_idx, mod in enumerate(modules):
-                    mod_title = st.text_input("Module Title", value=mod[2], key=f"mod_title_{mod[0]}_{m_idx}")
-                    mod_desc = st.text_area("Module Desc", value=mod[3], key=f"mod_desc_{mod[0]}_{m_idx}")
-                    mod_type = st.selectbox("Module Type", ["Video","PDF","Link"], index=["Video","PDF","Link"].index(mod[4]), key=f"mod_type_{mod[0]}_{m_idx}")
-                    mod_link = st.text_input("Link (if any)", value=mod[6] if mod[6] else "", key=f"mod_link_{mod[0]}_{m_idx}")
-                    if st.button("Update Module", key=f"update_mod_{mod[0]}_{m_idx}"):
+                for mod in modules:
+                    mod_title = st.text_input("Module Title", value=mod[2], key=f"mod_title_{mod[0]}")
+                    mod_desc = st.text_area("Module Desc", value=mod[3], key=f"mod_desc_{mod[0]}")
+                    mod_type = st.selectbox("Module Type", ["Video","PDF","Link"], index=["Video","PDF","Link"].index(mod[4]), key=f"mod_type_{mod[0]}")
+                    mod_link = st.text_input("Link (if any)", value=mod[6] if mod[6] else "", key=f"mod_link_{mod[0]}")
+                    if st.button("Update Module", key=f"update_mod_{mod[0]}"):
                         update_module(mod[0], mod_title, mod_desc, mod_type, None, mod_link)
                         st.success("Module updated")
                         st.experimental_rerun()
@@ -386,5 +398,7 @@ if "student" not in st.session_state:
     st.session_state["student"] = None
 if "student_id" not in st.session_state:
     st.session_state["student_id"] = None
+if "redirect_to_student" not in st.session_state:
+    st.session_state["redirect_to_student"] = False
 
 page_home()
