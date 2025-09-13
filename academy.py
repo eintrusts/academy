@@ -144,7 +144,15 @@ st.markdown("""
         .stNumberInput > div > input {
             background-color: #1e1e1e; color: #f5f5f5; border: 1px solid #333333; border-radius: 6px;
         }
-        .unique-btn button {background-color: #4CAF50 !important; color: white !important; border-radius: 8px !important; border: none !important; padding: 10px 20px !important; font-weight: bold !important;}
+        .unique-btn button {
+            background-color: #4CAF50 !important; 
+            color: white !important; 
+            border-radius: 8px !important; 
+            border: none !important; 
+            padding: 12px 25px !important; 
+            font-weight: bold !important;
+            width: 100%;
+        }
         .unique-btn button:hover {background-color: #45a049 !important; color: #ffffff !important;}
         .course-card {background: #1c1c1c; border-radius: 12px; padding: 16px; margin: 12px; box-shadow: 0px 4px 10px rgba(0,0,0,0.6);}
         .course-title {font-size: 22px; font-weight: bold; color: #f0f0f0;}
@@ -195,7 +203,7 @@ def page_home():
     st.image("https://github.com/eintrusts/CAP/blob/main/EinTrust%20%20(2).png?raw=true", width=180)
     st.header("Courses")
     courses = get_courses()
-    display_courses_grid(courses, enroll_option=False, show_lessons=False)
+    display_courses_grid(courses, enroll_option=True, student_id=st.session_state.get("student", [None])[0], show_lessons=False)
 
 def page_signup():
     st.image("https://github.com/eintrusts/CAP/blob/main/EinTrust%20%20(2).png?raw=true", width=180)
