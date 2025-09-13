@@ -148,8 +148,6 @@ body {background-color: #0d0f12; color: #e0e0e0;}
 .course-desc {font-size: 14px; color: #cccccc;}
 .center-container {display: flex; flex-direction: column; align-items: center; justify-content: center;}
 .center {text-align: center;}
-.unique-btn button {background-color: #4CAF50 !important; color: white !important; border-radius: 8px !important; border: none !important; padding: 12px 25px !important; font-weight: bold !important; width: 100%;}
-.unique-btn button:hover {background-color: #45a049 !important; color: #ffffff !important;}
 </style>
 """, unsafe_allow_html=True)
 
@@ -179,7 +177,6 @@ def display_courses(courses, enroll=False, student_id=None, show_lessons=False, 
                 if st.button("Edit Course", key=f"edit_{course[0]}", use_container_width=True):
                     st.session_state["edit_course"] = course
                     st.session_state["page"] = "edit_course"
-                    st.experimental_rerun()
             if show_lessons:
                 lessons = get_lessons(course[0])
                 if lessons:
@@ -213,7 +210,8 @@ def page_signup():
         gender = st.selectbox("Gender", ["Male","Female","Other"])
         profession = st.text_input("Profession")
         institution = st.text_input("Institution")
-        if st.form_submit_button("Submit"):
+        submit = st.form_submit_button("Submit")
+        if submit:
             if not is_valid_email(email):
                 st.error("Enter a valid email address.")
             elif not is_valid_password(password):
@@ -222,7 +220,6 @@ def page_signup():
                 if add_student(full_name, email, password, gender, profession, institution):
                     st.success("Profile created! Please login.")
                     st.session_state["page"] = "login"
-                    st.experimental_rerun()
                 else:
                     st.error("Email already registered.")
 
@@ -235,7 +232,6 @@ def page_login():
         if student:
             st.session_state["student"] = student
             st.session_state["page"] = "student_dashboard"
-            st.experimental_rerun()
         else:
             st.error("Invalid credentials.")
 
@@ -248,20 +244,16 @@ def page_student_dashboard():
         st.warning("Please login first.")
         return
 
-    tabs = st.tabs(["All Courses", "My Courses", "Edit Profile", "Logout"])
-    
-    with tabs[0]:
-        st.subheader("All Courses")
+    tab_names = ["All Courses", "My Courses", "Edit Profile", "Logout"]
+    selected_tab = st.radio("Navigate:", tab_names, index=0, horizontal=True)
+
+    if selected_tab == "All Courses":
         courses = get_courses()
         display_courses(courses, enroll=True, student_id=student[0])
-        
-    with tabs[1]:
-        st.subheader("My Courses")
+    elif selected_tab == "My Courses":
         enrolled_courses = get_student_courses(student[0])
         display_courses(enrolled_courses, show_lessons=True)
-        
-    with tabs[2]:
-        st.subheader("Edit Profile")
+    elif selected_tab == "Edit Profile":
         with st.form("edit_profile_form"):
             full_name = st.text_input("Full Name", value=student[1])
             email = st.text_input("Email ID", value=student[2])
@@ -269,18 +261,16 @@ def page_student_dashboard():
             gender = st.selectbox("Gender", ["Male","Female","Other"], index=["Male","Female","Other"].index(student[4]))
             profession = st.text_input("Profession", value=student[5])
             institution = st.text_input("Institution", value=student[6])
-            if st.form_submit_button("Update Profile"):
+            submit = st.form_submit_button("Update Profile")
+            if submit:
                 if update_student(student[0], full_name, email, password, gender, profession, institution):
                     st.success("Profile updated!")
                     st.session_state["student"] = authenticate_student(email, password)
-                    st.experimental_rerun()
                 else:
                     st.error("Email already exists.")
-    
-    with tabs[3]:
+    elif selected_tab == "Logout":
         st.session_state.clear()
         st.session_state["page"] = "home"
-        st.experimental_rerun()
 
 # ---------------------------
 # Admin Pages
@@ -291,20 +281,19 @@ def page_admin():
     if st.button("Login as Admin"):
         if admin_pass == "eintrust2025":
             st.session_state["page"] = "admin_dashboard"
-            st.experimental_rerun()
         else:
             st.error("Wrong admin password.")
 
 def page_admin_dashboard():
-    tabs = st.tabs(["Dashboard", "Students", "Courses & Lessons", "Logout"])
+    tab_names = ["Dashboard", "Students", "Courses & Lessons", "Logout"]
+    selected_tab = st.radio("Navigate:", tab_names, index=0, horizontal=True)
 
-    with tabs[0]:
+    if selected_tab == "Dashboard":
         st.subheader("Overview")
         st.write(f"Total Students: {c.execute('SELECT COUNT(*) FROM students').fetchone()[0]}")
         st.write(f"Total Courses: {c.execute('SELECT COUNT(*) FROM courses').fetchone()[0]}")
         st.write(f"Total Lessons: {c.execute('SELECT COUNT(*) FROM lessons').fetchone()[0]}")
-
-    with tabs[1]:
+    elif selected_tab == "Students":
         st.subheader("Manage Students")
         students = c.execute("SELECT * FROM students").fetchall()
         for s in students:
@@ -312,23 +301,20 @@ def page_admin_dashboard():
             if st.button(f"Delete {s[1]}", key=f"del_student_{s[0]}"):
                 c.execute("DELETE FROM students WHERE student_id=?", (s[0],))
                 conn.commit()
-                st.experimental_rerun()
-
-    with tabs[2]:
+    elif selected_tab == "Courses & Lessons":
         st.subheader("Manage Courses & Lessons")
         courses = get_courses()
         display_courses(courses, editable=True, show_lessons=True)
-
-        st.markdown("---")
+        # Add course form
         with st.form("add_course_form"):
             title = st.text_input("Title")
             subtitle = st.text_input("Subtitle")
             desc = st.text_area("Description")
             price = st.number_input("Price", min_value=0.0, step=1.0)
-            if st.form_submit_button("Add Course"):
+            submit = st.form_submit_button("Add Course")
+            if submit:
                 add_course(title, subtitle, desc, price)
-                st.experimental_rerun()
-
+        # Add lesson form
         with st.form("add_lesson_form"):
             course_id = st.selectbox("Select Course", [c[0] for c in get_courses()])
             title = st.text_input("Lesson Title")
@@ -336,14 +322,12 @@ def page_admin_dashboard():
             lesson_type = st.selectbox("Type", ["Video", "PDF", "PPT", "Link"])
             uploaded_file = st.file_uploader("Upload File")
             link = st.text_input("External Link")
-            if st.form_submit_button("Add Lesson"):
+            submit = st.form_submit_button("Add Lesson")
+            if submit:
                 add_lesson(course_id, title, desc, lesson_type, convert_file_to_bytes(uploaded_file), link)
-                st.experimental_rerun()
-
-    with tabs[3]:
+    elif selected_tab == "Logout":
         st.session_state.clear()
         st.session_state["page"] = "home"
-        st.experimental_rerun()
 
 # ---------------------------
 # Edit Course Page
@@ -357,31 +341,33 @@ def page_edit_course():
             subtitle = st.text_input("Subtitle", value=course[2])
             desc = st.text_area("Description", value=course[3])
             price = st.number_input("Price", value=course[4], min_value=0.0, step=1.0)
-            
             col1, col2 = st.columns(2)
             with col1:
-                if st.form_submit_button("Update Course"):
+                submit = st.form_submit_button("Update Course")
+                if submit:
                     update_course(course[0], title, subtitle, desc, price)
                     st.success("Course updated!")
                     st.session_state["page"] = "admin_dashboard"
-                    st.experimental_rerun()
             with col2:
-                if st.form_submit_button("Back to Dashboard"):
+                back = st.form_submit_button("Back to Dashboard")
+                if back:
                     st.session_state["page"] = "admin_dashboard"
-                    st.experimental_rerun()
 
 # ---------------------------
 # Main Navigation
 # ---------------------------
 display_logo_and_title_center()
 
-if "student" not in st.session_state and st.session_state.get("page") not in ["student_dashboard", "admin_dashboard", "edit_course"]:
+page = st.session_state.get("page", "home")
+student_logged_in = "student" in st.session_state
+
+if not student_logged_in and page not in ["student_dashboard", "admin_dashboard", "edit_course"]:
     tabs = st.tabs(["Home", "Signup", "Login", "Admin"])
     with tabs[0]: page_home()
     with tabs[1]: page_signup()
     with tabs[2]: page_login()
     with tabs[3]: page_admin()
 else:
-    if st.session_state.get("page") == "student_dashboard": page_student_dashboard()
-    elif st.session_state.get("page") == "admin_dashboard": page_admin_dashboard()
-    elif st.session_state.get("page") == "edit_course": page_edit_course()
+    if page == "student_dashboard": page_student_dashboard()
+    elif page == "admin_dashboard": page_admin_dashboard()
+    elif page == "edit_course": page_edit_course()
