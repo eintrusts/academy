@@ -208,44 +208,47 @@ def page_home():
         page_admin()
 
 # ---------------------------
-# Student Page
+# Student Page with Login/Signup subtabs
 # ---------------------------
 def page_student():
     student = st.session_state.get("student")
     if not student:
-        st.subheader("Student Login / Signup")
-        with st.form("student_login"):
-            email = st.text_input("Email ID", key="login_email")
-            password = st.text_input("Password", type="password", key="login_pass")
-            login_btn = st.form_submit_button("Login")
-            if login_btn:
-                s = authenticate_student(email, password)
-                if s:
-                    st.session_state["student"] = s
-                    st.session_state["student_id"] = s[0]
-                    st.success("Login Successful")
-                    st.experimental_rerun()
-                else:
-                    st.error("Invalid credentials")
-        with st.form("student_signup"):
-            st.subheader("Signup")
-            full_name = st.text_input("Full Name", key="signup_name")
-            email = st.text_input("Email ID", key="signup_email")
-            password = st.text_input("Password", type="password", key="signup_pass")
-            gender = st.selectbox("Gender", ["Male","Female","Other"])
-            profession = st.text_input("Profession")
-            institution = st.text_input("Institution")
-            signup_btn = st.form_submit_button("Signup")
-            if signup_btn:
-                if not is_valid_email(email):
-                    st.error("Enter valid email")
-                elif not is_valid_password(password):
-                    st.error("Password must have 8+ chars, uppercase, number, special char")
-                else:
-                    if add_student(full_name,email,password,gender,profession,institution):
-                        st.success("Signup successful! Login now.")
+        student_tabs = st.tabs(["Login","Signup"])
+        with student_tabs[0]:
+            st.subheader("Student Login")
+            with st.form("student_login"):
+                email = st.text_input("Email ID", key="login_email")
+                password = st.text_input("Password", type="password", key="login_pass")
+                login_btn = st.form_submit_button("Login")
+                if login_btn:
+                    s = authenticate_student(email, password)
+                    if s:
+                        st.session_state["student"] = s
+                        st.session_state["student_id"] = s[0]
+                        st.success("Login Successful")
+                        st.experimental_rerun()
                     else:
-                        st.error("Email already exists")
+                        st.error("Invalid credentials")
+        with student_tabs[1]:
+            st.subheader("Student Signup")
+            with st.form("student_signup"):
+                full_name = st.text_input("Full Name", key="signup_name")
+                email = st.text_input("Email ID", key="signup_email")
+                password = st.text_input("Password", type="password", key="signup_pass")
+                gender = st.selectbox("Gender", ["Male","Female","Other"])
+                profession = st.text_input("Profession")
+                institution = st.text_input("Institution")
+                signup_btn = st.form_submit_button("Signup")
+                if signup_btn:
+                    if not is_valid_email(email):
+                        st.error("Enter valid email")
+                    elif not is_valid_password(password):
+                        st.error("Password must have 8+ chars, uppercase, number, special char")
+                    else:
+                        if add_student(full_name,email,password,gender,profession,institution):
+                            st.success("Signup successful! Login now.")
+                        else:
+                            st.error("Email already exists")
     else:
         tabs = st.tabs(["My Courses","Edit Profile","Logout"])
         # My Courses
@@ -283,17 +286,15 @@ def page_student():
 # Admin Page
 # ---------------------------
 def page_admin():
-    # Simple admin credentials
     if "admin" not in st.session_state:
         st.session_state["admin"] = None
     if not st.session_state["admin"]:
         st.subheader("Admin Login")
         with st.form("admin_login"):
-            email = st.text_input("Admin Email", key="admin_email")
             password = st.text_input("Password", type="password", key="admin_pass")
             login_btn = st.form_submit_button("Login")
             if login_btn:
-                if email=="admin@eintrust.com" and password=="Admin123!":
+                if password=="Admin123!":
                     st.session_state["admin"] = True
                     st.success("Admin Login Successful")
                     st.experimental_rerun()
