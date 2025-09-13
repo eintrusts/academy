@@ -17,12 +17,12 @@ c.execute('''CREATE TABLE IF NOT EXISTS courses (
     price REAL
 )''')
 
-c.execute('''CREATE TABLE IF NOT EXISTS lessons (
-    lesson_id INTEGER PRIMARY KEY AUTOINCREMENT,
+c.execute('''CREATE TABLE IF NOT EXISTS modules (
+    module_id INTEGER PRIMARY KEY AUTOINCREMENT,
     course_id INTEGER,
     title TEXT,
     description TEXT,
-    lesson_type TEXT,
+    module_type TEXT,
     file BLOB,
     link TEXT,
     FOREIGN KEY(course_id) REFERENCES courses(course_id)
@@ -65,8 +65,8 @@ def convert_file_to_bytes(uploaded_file):
 def get_courses():
     return c.execute("SELECT * FROM courses ORDER BY course_id DESC").fetchall()
 
-def get_lessons(course_id):
-    return c.execute("SELECT * FROM lessons WHERE course_id=? ORDER BY lesson_id ASC", (course_id,)).fetchall()
+def get_modules(course_id):
+    return c.execute("SELECT * FROM modules WHERE course_id=? ORDER BY module_id ASC", (course_id,)).fetchall()
 
 def add_student(full_name, email, password, gender, profession, institution):
     try:
@@ -115,12 +115,12 @@ def update_course(course_id, title, subtitle, description, price):
 
 def delete_course(course_id):
     c.execute("DELETE FROM courses WHERE course_id=?", (course_id,))
-    c.execute("DELETE FROM lessons WHERE course_id=?", (course_id,))
+    c.execute("DELETE FROM modules WHERE course_id=?", (course_id,))
     conn.commit()
 
-def add_lesson(course_id, title, description, lesson_type, file, link):
-    c.execute("INSERT INTO lessons (course_id, title, description, lesson_type, file, link) VALUES (?,?,?,?,?,?)",
-              (course_id, title, description, lesson_type, file, link))
+def add_module(course_id, title, description, module_type, file, link):
+    c.execute("INSERT INTO modules (course_id, title, description, module_type, file, link) VALUES (?,?,?,?,?,?)",
+              (course_id, title, description, module_type, file, link))
     conn.commit()
 
 def format_price(price):
@@ -140,70 +140,29 @@ body {background-color: #0d0f12; color: #e0e0e0;}
 .stNumberInput > div > input {
     background-color: #1e1e1e; color: #f5f5f5; border: 1px solid #333333; border-radius: 6px;
 }
-.course-card {background: #1c1c1c; border-radius: 12px; padding: 16px; margin: 12px; box-shadow: 0px 4px 10px rgba(0,0,0,0.6);}
+.course-card {background: #1c1c1c; border-radius: 12px; padding: 16px; margin: 12px; box-shadow: 0px 4px 10px rgba(0,0,0,0.6); position:relative;}
 .course-title {font-size: 22px; font-weight: bold; color: #f0f0f0;}
 .course-subtitle {font-size: 16px; color: #b0b0b0;}
 .course-desc {font-size: 14px; color: #cccccc; margin-bottom: 12px;}
-.enroll-btn {background-color:#0a84ff;color:white;border:none;padding:6px 10px;border-radius:6px; cursor:pointer;}
-.center-container {display: flex; flex-direction: row; align-items: center; justify-content: flex-start; gap:15px;}
-.center-title {font-size:28px; font-weight:bold; color:#f0f0f0; font-family:'Times New Roman', serif;}
+.enroll-btn {background-color:#0a84ff;color:white;border:none;padding:6px 10px;border-radius:6px; cursor:pointer; position:absolute; top:16px; right:16px;}
+.header-container {display: flex; flex-direction: row; align-items: center; gap:15px;}
+.header-title {font-size:28px; font-weight:bold; color:#f0f0f0; font-family:'Times New Roman', serif;}
 </style>
 """, unsafe_allow_html=True)
 
 # ---------------------------
-# Central Header (Logo + Name)
+# Header (Logo + Name)
 # ---------------------------
 def display_logo_and_title_center():
-    st.markdown('<div class="center-container">', unsafe_allow_html=True)
-    st.image("https://github.com/eintrusts/CAP/blob/main/EinTrust%20%20(2).png?raw=true", width=50)
-    st.markdown("<div class='center-title'>EinTrust Academy</div>", unsafe_allow_html=True)
+    st.markdown('<div class="header-container">', unsafe_allow_html=True)
+    st.image("https://github.com/eintrusts/CAP/blob/main/EinTrust%20%20(2).png?raw=true", width=100)
+    st.markdown("<div class='header-title'>EinTrust Academy</div>", unsafe_allow_html=True)
     st.markdown('</div>', unsafe_allow_html=True)
-
-# ---------------------------
-# Pages: Signup/Login
-# ---------------------------
-def page_signup():
-    st.header("Create Profile")
-    with st.form("signup_form"):
-        full_name = st.text_input("Full Name")
-        email = st.text_input("Email ID")
-        password = st.text_input("Password", type="password")
-        gender = st.selectbox("Gender", ["Male","Female","Other"])
-        profession = st.text_input("Profession")
-        institution = st.text_input("Institution")
-        if st.form_submit_button("Submit"):
-            if not is_valid_email(email):
-                st.error("Enter a valid email address.")
-            elif not is_valid_password(password):
-                st.error("Weak password (8+ chars, uppercase, number, special char).")
-            else:
-                if add_student(full_name, email, password, gender, profession, institution):
-                    st.success("Profile created! Please login.")
-                    st.session_state["page"] = "home"
-                    st.session_state["active_tab"] = "Student"
-                    st.session_state["student_tab"] = "Login"
-                else:
-                    st.error("Email already registered.")
-
-def page_login(course_to_enroll=None):
-    st.header("Student Login")
-    email = st.text_input("Email ID")
-    password = st.text_input("Password", type="password")
-    if st.button("Login"):
-        student = authenticate_student(email, password)
-        if student:
-            st.session_state["student"] = student
-            st.session_state["page"] = "student_dashboard"
-            if course_to_enroll:
-                enroll_student_in_course(student[0], course_to_enroll)
-                st.success("Enrolled successfully!")
-        else:
-            st.error("Invalid credentials.")
 
 # ---------------------------
 # Display Courses
 # ---------------------------
-def display_courses(courses, enroll=False, student_id=None, show_lessons=False, editable=False):
+def display_courses(courses, enroll=False, student_id=None, show_modules=False, editable=False):
     if not courses:
         st.info("No courses available.")
         return
@@ -216,34 +175,92 @@ def display_courses(courses, enroll=False, student_id=None, show_lessons=False, 
                 <div class="course-subtitle">{course[2]}</div>
                 <div class="course-desc">{course[3][:150]}...</div>
                 <p><b>Price:</b> {format_price(course[4])}</p>
-            </div>
             """, unsafe_allow_html=True)
-            if enroll:
+            if enroll and student_id:
                 if st.button("Enroll", key=f"enroll_{course[0]}"):
-                    if "student" not in st.session_state:
-                        st.session_state["page"] = "home"
-                        st.session_state["active_tab"] = "Student"
-                        st.session_state["student_tab"] = "Login"
-                        st.session_state["course_to_enroll"] = course[0]
-                    else:
-                        enroll_student_in_course(st.session_state["student"][0], course[0])
-                        st.success(f"Enrolled in {course[1]}")
-                        st.session_state["page"] = "student_dashboard"
+                    st.session_state["selected_course"] = course
+                    st.session_state["page"] = "student_dashboard"
+                    st.experimental_rerun()
+            if editable:
+                if st.button("Edit Course", key=f"edit_{course[0]}"):
+                    st.session_state["edit_course"] = course
+                    st.session_state["page"] = "edit_course"
+                    st.experimental_rerun()
+            if show_modules:
+                modules = get_modules(course[0])
+                if modules:
+                    st.write("Modules:")
+                    for m in modules:
+                        st.write(f"- {m[2]} ({m[4]})")
+            st.markdown("</div>", unsafe_allow_html=True)
 
 # ---------------------------
-# Student Dashboard
+# Pages: Home, Student, Admin
 # ---------------------------
+def page_home():
+    courses = get_courses()
+    display_courses(courses, enroll=True, student_id=st.session_state.get("student", [None])[0] if "student" in st.session_state else None)
+
+def page_student():
+    # Login & Signup
+    tabs = st.tabs(["Login", "Signup"])
+    student = st.session_state.get("student")
+
+    with tabs[0]:
+        st.header("Student Login")
+        email = st.text_input("Email ID", key="login_email")
+        password = st.text_input("Password", type="password", key="login_pass")
+        if st.button("Login", key="login_btn"):
+            user = authenticate_student(email, password)
+            if user:
+                st.session_state["student"] = user
+                st.session_state["page"] = "student_dashboard"
+                st.experimental_rerun()
+            else:
+                st.error("Invalid credentials.")
+
+    with tabs[1]:
+        st.header("Create Profile")
+        with st.form("signup_form"):
+            full_name = st.text_input("Full Name", key="signup_name")
+            email = st.text_input("Email ID", key="signup_email")
+            password = st.text_input("Password", type="password", key="signup_pass")
+            gender = st.selectbox("Gender", ["Male","Female","Other"])
+            profession = st.text_input("Profession")
+            institution = st.text_input("Institution")
+            if st.form_submit_button("Submit"):
+                if not is_valid_email(email):
+                    st.error("Enter a valid email address.")
+                elif not is_valid_password(password):
+                    st.error("Weak password (8+ chars, uppercase, number, special char).")
+                else:
+                    if add_student(full_name, email, password, gender, profession, institution):
+                        st.success("Profile created! Please login.")
+                        st.session_state["page"] = "student"
+                        st.experimental_rerun()
+                    else:
+                        st.error("Email already registered.")
+
 def page_student_dashboard():
     student = st.session_state.get("student")
     if not student:
         st.warning("Please login first.")
         return
+
     tabs = st.tabs(["All Courses", "My Courses", "Edit Profile", "Logout"])
+
     with tabs[0]:
-        display_courses(get_courses(), enroll=True, student_id=student[0])
+        st.subheader("All Courses")
+        courses = get_courses()
+        display_courses(courses, enroll=True, student_id=student[0])
+
     with tabs[1]:
-        display_courses(get_student_courses(student[0]), show_lessons=True)
+        st.subheader("My Courses")
+        enrolled_courses = get_student_courses(student[0])
+        display_courses(enrolled_courses, show_modules=True)
+
     with tabs[2]:
+        st.subheader("Edit Profile")
         with st.form("edit_profile_form"):
             full_name = st.text_input("Full Name", value=student[1])
             email = st.text_input("Email ID", value=student[2])
@@ -255,12 +272,14 @@ def page_student_dashboard():
                 if update_student(student[0], full_name, email, password, gender, profession, institution):
                     st.success("Profile updated!")
                     st.session_state["student"] = authenticate_student(email, password)
+                    st.experimental_rerun()
                 else:
                     st.error("Email already exists.")
+
     with tabs[3]:
-        st.info("Logged out successfully.")
         st.session_state.clear()
         st.session_state["page"] = "home"
+        st.experimental_rerun()
 
 # ---------------------------
 # Admin Pages
@@ -271,16 +290,19 @@ def page_admin():
     if st.button("Login as Admin"):
         if admin_pass == "eintrust2025":
             st.session_state["page"] = "admin_dashboard"
+            st.experimental_rerun()
         else:
             st.error("Wrong admin password.")
 
 def page_admin_dashboard():
-    tabs = st.tabs(["Dashboard", "Students", "Courses & Lessons", "Logout"])
+    tabs = st.tabs(["Dashboard", "Students", "Courses & Modules", "Logout"])
+
     with tabs[0]:
         st.subheader("Overview")
         st.write(f"Total Students: {c.execute('SELECT COUNT(*) FROM students').fetchone()[0]}")
         st.write(f"Total Courses: {c.execute('SELECT COUNT(*) FROM courses').fetchone()[0]}")
-        st.write(f"Total Lessons: {c.execute('SELECT COUNT(*) FROM lessons').fetchone()[0]}")
+        st.write(f"Total Modules: {c.execute('SELECT COUNT(*) FROM modules').fetchone()[0]}")
+
     with tabs[1]:
         st.subheader("Manage Students")
         students = c.execute("SELECT * FROM students").fetchall()
@@ -289,45 +311,68 @@ def page_admin_dashboard():
             if st.button(f"Delete {s[1]}", key=f"del_student_{s[0]}"):
                 c.execute("DELETE FROM students WHERE student_id=?", (s[0],))
                 conn.commit()
+                st.experimental_rerun()
+
     with tabs[2]:
-        st.subheader("Manage Courses & Lessons")
-        display_courses(get_courses(), editable=True, show_lessons=True)
+        st.subheader("Manage Courses & Modules")
+        courses = get_courses()
+        display_courses(courses, editable=True, show_modules=True)
+
+        st.markdown("---")
+        with st.form("add_course_form"):
+            title = st.text_input("Title")
+            subtitle = st.text_input("Subtitle")
+            desc = st.text_area("Description")
+            price = st.number_input("Price", min_value=0.0, step=1.0)
+            if st.form_submit_button("Add Course"):
+                add_course(title, subtitle, desc, price)
+                st.experimental_rerun()
+
+        with st.form("add_module_form"):
+            course_id = st.selectbox("Select Course", [c[0] for c in get_courses()])
+            title = st.text_input("Module Title")
+            desc = st.text_area("Module Description")
+            module_type = st.selectbox("Type", ["Video", "PDF", "PPT", "Link"])
+            uploaded_file = st.file_uploader("Upload File")
+            link = st.text_input("External Link")
+            if st.form_submit_button("Add Module"):
+                add_module(course_id, title, desc, module_type, convert_file_to_bytes(uploaded_file), link)
+                st.experimental_rerun()
+
     with tabs[3]:
-        st.info("Admin logged out successfully.")
         st.session_state.clear()
         st.session_state["page"] = "home"
+        st.experimental_rerun()
 
 # ---------------------------
-# Main Home Page
+# Edit Course Page
 # ---------------------------
-def page_home():
-    active_tab = st.session_state.get("active_tab", "Courses")
-    student_tab = st.session_state.get("student_tab", "Login")
-    course_to_enroll = st.session_state.get("course_to_enroll")
-    tabs = st.tabs(["Courses", "Student", "Admin"])
-    with tabs[0]:
-        display_courses(get_courses(), enroll=True)
-    with tabs[1]:
-        sub_tabs = st.tabs(["Login", "Signup"])
-        if student_tab=="Login":
-            with sub_tabs[0]:
-                page_login(course_to_enroll)
-        else:
-            with sub_tabs[1]:
-                page_signup()
-    with tabs[2]:
-        page_admin()
+def page_edit_course():
+    course = st.session_state.get("edit_course")
+    if course:
+        st.header(f"Edit Course: {course[1]}")
+        with st.form("edit_course_form"):
+            title = st.text_input("Title", value=course[1])
+            subtitle = st.text_input("Subtitle", value=course[2])
+            desc = st.text_area("Description", value=course[3])
+            price = st.number_input("Price", value=course[4], min_value=0.0, step=1.0)
+            if st.form_submit_button("Update Course"):
+                update_course(course[0], title, subtitle, desc, price)
+                st.success("Course updated!")
+                st.session_state["page"] = "admin_dashboard"
+                st.experimental_rerun()
 
 # ---------------------------
-# Main
+# Main Navigation
 # ---------------------------
 display_logo_and_title_center()
-if "page" not in st.session_state:
-    st.session_state["page"] = "home"
 
-if st.session_state["page"]=="home":
-    page_home()
-elif st.session_state["page"]=="student_dashboard":
-    page_student_dashboard()
-elif st.session_state["page"]=="admin_dashboard":
-    page_admin_dashboard()
+if "student" not in st.session_state and st.session_state.get("page") not in ["student_dashboard", "admin_dashboard", "edit_course"]:
+    tabs = st.tabs(["Courses", "Student", "Admin"])
+    with tabs[0]: page_home()
+    with tabs[1]: page_student()
+    with tabs[2]: page_admin()
+else:
+    if st.session_state.get("page") == "student_dashboard": page_student_dashboard()
+    elif st.session_state.get("page") == "admin_dashboard": page_admin_dashboard()
+    elif st.session_state.get("page") == "edit_course": page_edit_course()
