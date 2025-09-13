@@ -64,9 +64,7 @@ def is_valid_password(password):
             re.search(r"[!@#$%^&*(),.?\":{}|<>]", password))
 
 def convert_file_to_bytes(uploaded_file):
-    if uploaded_file is not None:
-        return uploaded_file.read()
-    return None
+    return uploaded_file.read() if uploaded_file else None
 
 def get_courses():
     return c.execute("SELECT * FROM courses ORDER BY course_id DESC").fetchall()
@@ -85,7 +83,8 @@ def add_student(full_name, email, password, gender, profession, institution):
 
 def update_student(student_id, full_name, email, password, gender, profession, institution):
     try:
-        c.execute("""UPDATE students SET full_name=?, email=?, password=?, gender=?, profession=?, institution=? 
+        c.execute("""UPDATE students 
+                     SET full_name=?, email=?, password=?, gender=?, profession=?, institution=? 
                      WHERE student_id=?""",
                   (full_name, email, password, gender, profession, institution, student_id))
         conn.commit()
@@ -110,7 +109,8 @@ def get_student_courses(student_id):
            WHERE student_courses.student_id=?''', (student_id,)).fetchall()
 
 def add_course(title, subtitle, description, price):
-    c.execute("INSERT INTO courses (title, subtitle, description, price) VALUES (?,?,?,?)", (title, subtitle, description, price))
+    c.execute("INSERT INTO courses (title, subtitle, description, price) VALUES (?,?,?,?)",
+              (title, subtitle, description, price))
     conn.commit()
     return c.lastrowid
 
@@ -137,12 +137,6 @@ st.markdown("""
 <style>
 body {background-color: #0d0f12; color: #e0e0e0;}
 .stApp {background-color: #0d0f12; color: #e0e0e0;}
-.stTextInput > div > div > input,
-.stSelectbox > div > div > select,
-.stTextArea > div > textarea,
-.stNumberInput > div > input {
-    background-color: #1e1e1e; color: #f5f5f5; border: 1px solid #333333; border-radius: 6px;
-}
 .course-card {background: #1c1c1c; border-radius: 12px; padding: 16px; margin: 12px; box-shadow: 0px 4px 10px rgba(0,0,0,0.6);}
 .course-title {font-size: 22px; font-weight: bold; color: #f0f0f0;}
 .course-subtitle {font-size: 16px; color: #b0b0b0;}
@@ -277,10 +271,10 @@ def page_student_dashboard():
                     st.error("Email already exists.")
     
     with tabs[3]:
-        st.success("You have been logged out.")
-        st.session_state.clear()
-        st.session_state["page"] = "home"
-        st.experimental_rerun()
+        if st.button("Confirm Logout", key="student_logout"):
+            st.session_state.clear()
+            st.session_state["page"] = "home"
+            st.experimental_rerun()
 
 # ---------------------------
 # Admin Pages
@@ -341,10 +335,10 @@ def page_admin_dashboard():
                 st.experimental_rerun()
 
     with tabs[3]:
-        st.success("Admin logged out.")
-        st.session_state.clear()
-        st.session_state["page"] = "home"
-        st.experimental_rerun()
+        if st.button("Confirm Logout", key="admin_logout"):
+            st.session_state.clear()
+            st.session_state["page"] = "home"
+            st.experimental_rerun()
 
 # ---------------------------
 # Edit Course Page
@@ -376,6 +370,9 @@ if "student" not in st.session_state and st.session_state.get("page") not in ["s
     with tabs[2]: page_login()
     with tabs[3]: page_admin()
 else:
-    if st.session_state.get("page") == "student_dashboard": page_student_dashboard()
-    elif st.session_state.get("page") == "admin_dashboard": page_admin_dashboard()
-    elif st.session_state.get("page") == "edit_course": page_edit_course()
+    if st.session_state.get("page") == "student_dashboard":
+        page_student_dashboard()
+    elif st.session_state.get("page") == "admin_dashboard":
+        page_admin_dashboard()
+    elif st.session_state.get("page") == "edit_course":
+        page_edit_course()
