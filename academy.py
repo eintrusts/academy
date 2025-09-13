@@ -146,12 +146,12 @@ body {background-color: #0d0f12; color: #e0e0e0;}
 .course-desc {font-size: 14px; color: #cccccc; margin-bottom: 12px;}
 .enroll-btn {background-color:#0a84ff;color:white;border:none;padding:6px 10px;border-radius:6px; cursor:pointer;}
 .center-container {display: flex; flex-direction: row; align-items: center; justify-content: flex-start; gap:15px;}
-.center-title {font-size:28px; font-weight:bold; color:#f0f0f0;}
+.center-title {font-size:28px; font-weight:bold; color:#f0f0f0; font-family:'Times New Roman', serif;}
 </style>
 """, unsafe_allow_html=True)
 
 # ---------------------------
-# Central Header (Logo + Title on same line)
+# Central Header (Logo + Name)
 # ---------------------------
 def display_logo_and_title_center():
     st.markdown('<div class="center-container">', unsafe_allow_html=True)
@@ -180,10 +180,12 @@ def page_signup():
                 if add_student(full_name, email, password, gender, profession, institution):
                     st.success("Profile created! Please login.")
                     st.session_state["page"] = "home"
+                    st.session_state["active_tab"] = "Student"
+                    st.session_state["student_tab"] = "Login"
                 else:
                     st.error("Email already registered.")
 
-def page_login():
+def page_login(course_to_enroll=None):
     st.header("Student Login")
     email = st.text_input("Email ID")
     password = st.text_input("Password", type="password")
@@ -192,6 +194,9 @@ def page_login():
         if student:
             st.session_state["student"] = student
             st.session_state["page"] = "student_dashboard"
+            if course_to_enroll:
+                enroll_student_in_course(student[0], course_to_enroll)
+                st.success("Enrolled successfully!")
         else:
             st.error("Invalid credentials.")
 
@@ -218,6 +223,8 @@ def display_courses(courses, enroll=False, student_id=None, show_lessons=False, 
                     if "student" not in st.session_state:
                         st.session_state["page"] = "home"
                         st.session_state["active_tab"] = "Student"
+                        st.session_state["student_tab"] = "Login"
+                        st.session_state["course_to_enroll"] = course[0]
                     else:
                         enroll_student_in_course(st.session_state["student"][0], course[0])
                         st.success(f"Enrolled in {course[1]}")
@@ -295,27 +302,32 @@ def page_admin_dashboard():
 # ---------------------------
 def page_home():
     active_tab = st.session_state.get("active_tab", "Courses")
+    student_tab = st.session_state.get("student_tab", "Login")
+    course_to_enroll = st.session_state.get("course_to_enroll")
     tabs = st.tabs(["Courses", "Student", "Admin"])
     with tabs[0]:
         display_courses(get_courses(), enroll=True)
     with tabs[1]:
         sub_tabs = st.tabs(["Login", "Signup"])
-        with sub_tabs[0]: page_login()
-        with sub_tabs[1]: page_signup()
+        if student_tab=="Login":
+            with sub_tabs[0]:
+                page_login(course_to_enroll)
+        else:
+            with sub_tabs[1]:
+                page_signup()
     with tabs[2]:
         page_admin()
 
 # ---------------------------
-# Main App
+# Main
 # ---------------------------
 display_logo_and_title_center()
-
 if "page" not in st.session_state:
     st.session_state["page"] = "home"
 
-if st.session_state["page"] == "home":
+if st.session_state["page"]=="home":
     page_home()
-elif st.session_state["page"] == "student_dashboard":
+elif st.session_state["page"]=="student_dashboard":
     page_student_dashboard()
-elif st.session_state["page"] == "admin_dashboard":
+elif st.session_state["page"]=="admin_dashboard":
     page_admin_dashboard()
