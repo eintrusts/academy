@@ -219,17 +219,9 @@ def page_home():
 
     # Student Tab with sub-tabs
     with main_tabs[1]:
-        if "student_tab" not in st.session_state:
-            st.session_state["student_tab"] = "Signup"
-
         student_tabs = st.tabs(["Signup", "Login"])
-
-        if st.session_state["student_tab"] == "Signup":
-            with student_tabs[0]:
-                page_signup()
-        else:
-            with student_tabs[1]:
-                page_login()
+        with student_tabs[0]: page_signup()
+        with student_tabs[1]: page_login()
 
     # Admin Tab
     with main_tabs[2]:
@@ -252,7 +244,6 @@ def page_signup():
         profession = st.text_input("Profession")
         institution = st.text_input("Institution")
         submitted = st.form_submit_button("Submit")
-        
         if submitted:
             if not is_valid_email(email):
                 st.error("Enter a valid email address.")
@@ -261,10 +252,8 @@ def page_signup():
             else:
                 success = add_student(full_name, email, password, gender, profession, institution)
                 if success:
-                    st.success("Profile created successfully! Redirecting to login...")
-                    st.session_state["page"] = "home"
-                    st.session_state["student_tab"] = "Login"
-                    st.experimental_rerun()
+                    st.success("Profile created successfully! Please login.")
+                    st.session_state["page"] = "student_dashboard"
                 else:
                     st.error("Email already registered. Please login.")
 
@@ -313,9 +302,7 @@ def page_admin():
 
 def page_admin_dashboard():
     st.header("Admin Dashboard")
-
     tab1, tab2, tab3 = st.tabs(["Dashboard", "Students", "Courses & Lessons"])
-
     with tab1:
         st.subheader("Overview")
         total_students = c.execute("SELECT COUNT(*) FROM students").fetchone()[0]
@@ -373,22 +360,9 @@ def page_admin_dashboard():
             st.experimental_rerun()
 
 # ---------------------------
-# Main Navigation
+# Edit Course Page
 # ---------------------------
-if "page" not in st.session_state:
-    st.session_state["page"] = "home"
-
-if st.session_state["page"] == "home":
-    page_home()
-elif st.session_state["page"] == "signup":
-    page_signup()
-elif st.session_state["page"] == "login":
-    page_login()
-elif st.session_state["page"] == "student_dashboard":
-    page_student_dashboard()
-elif st.session_state["page"] == "admin_dashboard":
-    page_admin_dashboard()
-elif st.session_state["page"] == "edit_course":
+def page_edit_course():
     course = st.session_state.get("edit_course")
     if course:
         st.header(f"Edit Course: {course[1]}")
@@ -402,3 +376,17 @@ elif st.session_state["page"] == "edit_course":
                 st.success("Course updated!")
                 st.session_state["page"] = "admin_dashboard"
                 st.experimental_rerun()
+
+# ---------------------------
+# Main Navigation
+# ---------------------------
+if "page" not in st.session_state:
+    st.session_state["page"] = "home"
+
+if st.session_state["page"] == "home":
+    page_home()
+elif st.session_state["page"] == "signup": page_signup()
+elif st.session_state["page"] == "login": page_login()
+elif st.session_state["page"] == "student_dashboard": page_student_dashboard()
+elif st.session_state["page"] == "admin_dashboard": page_admin_dashboard()
+elif st.session_state["page"] == "edit_course": page_edit_course()
