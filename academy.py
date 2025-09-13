@@ -198,6 +198,9 @@ def display_courses(courses, enroll=False, student_id=None, show_lessons=False, 
 # ---------------------------
 # Pages
 # ---------------------------
+# ---------------------------
+# Home Page
+# ---------------------------
 def page_home():
     # Logo + Title
     st.markdown("""
@@ -219,9 +222,18 @@ def page_home():
 
     # Student Tab with sub-tabs
     with main_tabs[1]:
+        # Decide which sub-tab to open
+        default_student_tab = st.session_state.get("student_tab", "Signup")
         student_tabs = st.tabs(["Signup", "Login"])
-        with student_tabs[0]: page_signup()
-        with student_tabs[1]: page_login()
+        # Map to correct tab index
+        if default_student_tab == "Signup":
+            with student_tabs[0]:
+                page_signup()
+        else:  # Login
+            with student_tabs[1]:
+                page_login()
+        # Reset tab state after rendering
+        st.session_state["student_tab"] = "Signup"
 
     # Admin Tab
     with main_tabs[2]:
@@ -234,6 +246,9 @@ def page_home():
     </div>
     """, unsafe_allow_html=True)
 
+# ---------------------------
+# Signup Page
+# ---------------------------
 def page_signup():
     st.header("Create Profile")
     with st.form("signup_form"):
@@ -244,6 +259,7 @@ def page_signup():
         profession = st.text_input("Profession")
         institution = st.text_input("Institution")
         submitted = st.form_submit_button("Submit")
+        
         if submitted:
             if not is_valid_email(email):
                 st.error("Enter a valid email address.")
@@ -252,11 +268,14 @@ def page_signup():
             else:
                 success = add_student(full_name, email, password, gender, profession, institution)
                 if success:
-                    st.success("Profile created successfully! Please login.")
-                    st.session_state["page"] = "student_dashboard"
+                    st.success("Profile created successfully! Redirecting to login...")
+                    # Redirect to home page with Login tab active
+                    st.session_state["page"] = "home"
+                    st.session_state["student_tab"] = "Login"
+                    st.experimental_rerun()
                 else:
                     st.error("Email already registered. Please login.")
-
+                    
 def page_login():
     st.header("Student Login")
     email = st.text_input("Email ID", key="login_email")
