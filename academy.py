@@ -48,7 +48,6 @@ c.execute('''CREATE TABLE IF NOT EXISTS student_courses (
     FOREIGN KEY(student_id) REFERENCES students(student_id),
     FOREIGN KEY(course_id) REFERENCES courses(course_id)
 )''')
-
 conn.commit()
 
 # ---------------------------
@@ -64,7 +63,9 @@ def is_valid_password(password):
             re.search(r"[!@#$%^&*(),.?\":{}|<>]", password))
 
 def convert_file_to_bytes(uploaded_file):
-    return uploaded_file.read() if uploaded_file else None
+    if uploaded_file:
+        return uploaded_file.read()
+    return None
 
 def get_courses():
     return c.execute("SELECT * FROM courses ORDER BY course_id DESC").fetchall()
@@ -83,8 +84,7 @@ def add_student(full_name, email, password, gender, profession, institution):
 
 def update_student(student_id, full_name, email, password, gender, profession, institution):
     try:
-        c.execute("""UPDATE students 
-                     SET full_name=?, email=?, password=?, gender=?, profession=?, institution=? 
+        c.execute("""UPDATE students SET full_name=?, email=?, password=?, gender=?, profession=?, institution=? 
                      WHERE student_id=?""",
                   (full_name, email, password, gender, profession, institution, student_id))
         conn.commit()
@@ -109,8 +109,7 @@ def get_student_courses(student_id):
            WHERE student_courses.student_id=?''', (student_id,)).fetchall()
 
 def add_course(title, subtitle, description, price):
-    c.execute("INSERT INTO courses (title, subtitle, description, price) VALUES (?,?,?,?)",
-              (title, subtitle, description, price))
+    c.execute("INSERT INTO courses (title, subtitle, description, price) VALUES (?,?,?,?)", (title, subtitle, description, price))
     conn.commit()
     return c.lastrowid
 
@@ -137,12 +136,20 @@ st.markdown("""
 <style>
 body {background-color: #0d0f12; color: #e0e0e0;}
 .stApp {background-color: #0d0f12; color: #e0e0e0;}
+.stTextInput > div > div > input,
+.stSelectbox > div > div > select,
+.stTextArea > div > textarea,
+.stNumberInput > div > input {
+    background-color: #1e1e1e; color: #f5f5f5; border: 1px solid #333333; border-radius: 6px;
+}
 .course-card {background: #1c1c1c; border-radius: 12px; padding: 16px; margin: 12px; box-shadow: 0px 4px 10px rgba(0,0,0,0.6);}
 .course-title {font-size: 22px; font-weight: bold; color: #f0f0f0;}
 .course-subtitle {font-size: 16px; color: #b0b0b0;}
 .course-desc {font-size: 14px; color: #cccccc;}
 .center-container {display: flex; flex-direction: column; align-items: center; justify-content: center;}
 .center {text-align: center;}
+.unique-btn button {background-color: #4CAF50 !important; color: white !important; border-radius: 8px !important; border: none !important; padding: 12px 25px !important; font-weight: bold !important; width: 100%;}
+.unique-btn button:hover {background-color: #45a049 !important; color: #ffffff !important;}
 </style>
 """, unsafe_allow_html=True)
 
@@ -271,10 +278,9 @@ def page_student_dashboard():
                     st.error("Email already exists.")
     
     with tabs[3]:
-        if st.button("Confirm Logout", key="student_logout"):
-            st.session_state.clear()
-            st.session_state["page"] = "home"
-            st.experimental_rerun()
+        st.session_state.clear()
+        st.session_state["page"] = "home"
+        st.experimental_rerun()
 
 # ---------------------------
 # Admin Pages
@@ -335,10 +341,9 @@ def page_admin_dashboard():
                 st.experimental_rerun()
 
     with tabs[3]:
-        if st.button("Confirm Logout", key="admin_logout"):
-            st.session_state.clear()
-            st.session_state["page"] = "home"
-            st.experimental_rerun()
+        st.session_state.clear()
+        st.session_state["page"] = "home"
+        st.experimental_rerun()
 
 # ---------------------------
 # Edit Course Page
@@ -352,11 +357,18 @@ def page_edit_course():
             subtitle = st.text_input("Subtitle", value=course[2])
             desc = st.text_area("Description", value=course[3])
             price = st.number_input("Price", value=course[4], min_value=0.0, step=1.0)
-            if st.form_submit_button("Update Course"):
-                update_course(course[0], title, subtitle, desc, price)
-                st.success("Course updated!")
-                st.session_state["page"] = "admin_dashboard"
-                st.experimental_rerun()
+            
+            col1, col2 = st.columns(2)
+            with col1:
+                if st.form_submit_button("Update Course"):
+                    update_course(course[0], title, subtitle, desc, price)
+                    st.success("Course updated!")
+                    st.session_state["page"] = "admin_dashboard"
+                    st.experimental_rerun()
+            with col2:
+                if st.form_submit_button("Back to Dashboard"):
+                    st.session_state["page"] = "admin_dashboard"
+                    st.experimental_rerun()
 
 # ---------------------------
 # Main Navigation
@@ -370,9 +382,6 @@ if "student" not in st.session_state and st.session_state.get("page") not in ["s
     with tabs[2]: page_login()
     with tabs[3]: page_admin()
 else:
-    if st.session_state.get("page") == "student_dashboard":
-        page_student_dashboard()
-    elif st.session_state.get("page") == "admin_dashboard":
-        page_admin_dashboard()
-    elif st.session_state.get("page") == "edit_course":
-        page_edit_course()
+    if st.session_state.get("page") == "student_dashboard": page_student_dashboard()
+    elif st.session_state.get("page") == "admin_dashboard": page_admin_dashboard()
+    elif st.session_state.get("page") == "edit_course": page_edit_course()
