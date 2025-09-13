@@ -9,10 +9,14 @@ import bcrypt
 # --- Constants and Config ---
 PAGE_TITLE = "EinTrust Academy"
 ADMIN_PASSWORD = "eintrust2025" # NOTE: For a real app, this should be an encrypted password stored in a secure location.
-ACCENT_COLOR = "#00B8D9"
-SECONDARY_COLOR = "#667EEA"
-BACKGROUND_COLOR = "#0D0F12"
-CARD_COLOR = "#1C1C1C"
+PRIMARY_COLOR = "#00B8D9"      # A bright, professional blue
+SECONDARY_COLOR = "#5C6AC4"    # A darker, complementary blue
+BACKGROUND_COLOR = "#0D0F12"   # A deep, dark background
+CARD_COLOR = "#1C1C1C"         # A subtle grey for cards
+TEXT_COLOR = "#E0E0E0"         # A light grey for body text
+HEADING_COLOR = "#FFFFFF"      # Pure white for headings
+SUCCESS_COLOR = "#4CAF50"
+INFO_COLOR = "#2196F3"
 
 # --- DB Setup ---
 conn = sqlite3.connect("academy.db", check_same_thread=False)
@@ -20,7 +24,6 @@ c = conn.cursor()
 
 def setup_database():
     """Initializes the database tables if they don't exist."""
-    # Using a single users table for both students and admins is more scalable.
     c.execute('''CREATE TABLE IF NOT EXISTS users (
         user_id INTEGER PRIMARY KEY AUTOINCREMENT,
         full_name TEXT,
@@ -29,7 +32,6 @@ def setup_database():
         role TEXT DEFAULT 'student' -- 'student' or 'admin'
     )''')
     
-    # Courses table
     c.execute('''CREATE TABLE IF NOT EXISTS courses (
         course_id INTEGER PRIMARY KEY AUTOINCREMENT,
         title TEXT,
@@ -38,7 +40,6 @@ def setup_database():
         price REAL
     )''')
     
-    # Lessons table with a lesson order column
     c.execute('''CREATE TABLE IF NOT EXISTS lessons (
         lesson_id INTEGER PRIMARY KEY AUTOINCREMENT,
         course_id INTEGER,
@@ -51,7 +52,6 @@ def setup_database():
         FOREIGN KEY(course_id) REFERENCES courses(course_id)
     )''')
     
-    # Enrollments table to track who is enrolled in what course
     c.execute('''CREATE TABLE IF NOT EXISTS enrollments (
         enrollment_id INTEGER PRIMARY KEY AUTOINCREMENT,
         user_id INTEGER,
@@ -173,45 +173,34 @@ def delete_user(user_id):
     conn.commit()
 
 # --- UI Components ---
-def display_course_card(course, button_label="", on_click=None):
-    """Displays a single course as a professional-looking card."""
+def display_course_card(course, user_id=None):
+    """Displays a single course as a professional-looking card with a button."""
+    is_enrolled = is_user_enrolled(user_id, course[0]) if user_id else False
+
     with st.container():
         st.markdown(f"""
         <div class="course-card">
             <h3 class="course-title">{course[1]}</h3>
             <p class="course-subtitle">{course[2]}</p>
             <p class="course-desc">{course[3]}</p>
-            <p style="font-size: 1.2rem; font-weight: bold; color: {ACCENT_COLOR};">Price: {"Free" if course[4]==0 else f"₹{course[4]:,.0f}"}</p>
-            {"<div style='height: 10px;'></div>" if not button_label else ""}
-        </div>
+            <p style="font-size: 1.2rem; font-weight: bold; color: {PRIMARY_COLOR};">Price: {"Free" if course[4]==0 else f"₹{course[4]:,.0f}"}</p>
         """, unsafe_allow_html=True)
-        if button_label:
-            if st.button(button_label, key=f"course_btn_{course[0]}", use_container_width=True):
-                if on_click:
-                    on_click(course[0])
+        
+        if user_id:
+            if is_enrolled:
+                if st.button("Go to Course", key=f"course_btn_{course[0]}", use_container_width=True):
+                    st.session_state.update(current_course_id=course[0], page='student_dashboard')
                     st.experimental_rerun()
-
-def display_courses_grid(courses, enroll_option=False):
-    """Displays a list of courses in a responsive grid."""
-    if not courses:
-        st.info("No courses available.")
-        return
-    
-    cols = st.columns(2)
-    for idx, course in enumerate(courses):
-        with cols[idx % 2]:
-            user_id = st.session_state.user['id'] if 'user' in st.session_state else None
-            is_enrolled = is_user_enrolled(user_id, course[0]) if user_id else False
-
-            if enroll_option and user_id and not is_enrolled:
-                display_course_card(course, button_label="Enroll Now", on_click=lambda course_id: enroll_user_in_course(user_id, course_id))
-            elif is_enrolled:
-                display_course_card(course, button_label="Go to Course", on_click=lambda course_id: st.session_state.update(current_course_id=course_id, page='student_dashboard'))
             else:
-                display_course_card(course)
+                if st.button("Enroll Now", key=f"course_btn_{course[0]}", use_container_width=True):
+                    if enroll_user_in_course(user_id, course[0]):
+                        st.success(f"Successfully enrolled in {course[1]}!")
+                        st.experimental_rerun()
+        else:
+            st.markdown("</div>", unsafe_allow_html=True)
 
 def get_logo_base64():
-    """Generates a base64 string for a simple logo from a hardcoded string."""
+    """Generates a base64 string for a simple logo."""
     svg = """
     <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
       <path d="M12 2L2 7L12 12L22 7L12 2Z" stroke="white" stroke-width="2" stroke-linejoin="round"/>
@@ -237,14 +226,14 @@ def page_header(user=None):
     with col1:
         st.image(logo_url, width=40)
     with col2:
-        st.markdown(f"<h1 style='color: white; font-size: 2rem; margin-top: -5px;'>{PAGE_TITLE}</h1>", unsafe_allow_html=True)
+        st.markdown(f"<h1 style='color: {HEADING_COLOR}; font-size: 2rem; margin-top: -5px;'>{PAGE_TITLE}</h1>", unsafe_allow_html=True)
     
     st.markdown("<hr style='border: 1px solid #2e2e2e;'>", unsafe_allow_html=True)
     
     if user:
         user_info, logout_btn = st.columns([4, 1])
         with user_info:
-            st.markdown(f"<h3 style='color: {SECONDARY_COLOR};'>Welcome, {user['full_name']}! 👋</h3>", unsafe_allow_html=True)
+            st.markdown(f"<h3 style='color: {SECONDARY_COLOR};'>Welcome, {user['full_name']} 👋</h3>", unsafe_allow_html=True)
         with logout_btn:
             if st.button("Logout", key="logout_btn", use_container_width=True):
                 st.session_state.clear()
@@ -253,23 +242,31 @@ def page_header(user=None):
 
 def page_home_public():
     """The public landing page for non-logged-in users."""
-    st.title("Welcome to EinTrust Academy")
+    st.markdown(f"<h2 style='color: {PRIMARY_COLOR};'>Welcome to EinTrust Academy</h2>", unsafe_allow_html=True)
     st.markdown("Unlock your potential with our expertly crafted courses. Sign up or log in to get started.", unsafe_allow_html=True)
     
     st.markdown("---")
     
-    st.subheader("Available Courses")
+    st.markdown(f"<h3 style='color: {HEADING_COLOR};'>Available Courses</h3>", unsafe_allow_html=True)
     courses = get_courses()
-    display_courses_grid(courses)
+    
+    if not courses:
+        st.info("No courses are available at the moment.")
+        return
+
+    cols = st.columns(2)
+    for idx, course in enumerate(courses):
+        with cols[idx % 2]:
+            display_course_card(course, user_id=None)
 
 def page_login_signup():
     """Handles both login and signup on a single page."""
-    st.title("Login or Sign Up")
+    st.markdown(f"<h2 style='color: {PRIMARY_COLOR};'>Login or Sign Up</h2>", unsafe_allow_html=True)
     
     login_tab, signup_tab = st.tabs(["Login", "Sign Up"])
     
     with login_tab:
-        st.subheader("Student Login")
+        st.markdown(f"<h3 style='color: {HEADING_COLOR};'>Student Login</h3>", unsafe_allow_html=True)
         with st.form("login_form"):
             email = st.text_input("Email ID", key="login_email")
             password = st.text_input("Password", type="password", key="login_pass")
@@ -283,7 +280,7 @@ def page_login_signup():
                     st.error("Invalid email or password.")
     
     with signup_tab:
-        st.subheader("Create Your Profile")
+        st.markdown(f"<h3 style='color: {HEADING_COLOR};'>Create Your Profile</h3>", unsafe_allow_html=True)
         with st.form("signup_form"):
             full_name = st.text_input("Full Name")
             email = st.text_input("Email ID", help="Must be unique.")
@@ -310,7 +307,7 @@ def page_student_dashboard():
     my_courses_tab, all_courses_tab = st.tabs(["My Courses", "All Courses"])
     
     with my_courses_tab:
-        st.subheader("My Enrolled Courses")
+        st.markdown(f"<h3 style='color: {HEADING_COLOR};'>My Enrolled Courses</h3>", unsafe_allow_html=True)
         enrolled_courses = get_enrolled_courses(user['id'])
         
         if not enrolled_courses:
@@ -342,28 +339,13 @@ def page_student_dashboard():
                             st.markdown("<br>", unsafe_allow_html=True)
     
     with all_courses_tab:
-        st.subheader("All Available Courses")
+        st.markdown(f"<h3 style='color: {HEADING_COLOR};'>All Available Courses</h3>", unsafe_allow_html=True)
         all_courses = get_courses()
         
         cols = st.columns(2)
         for idx, course in enumerate(all_courses):
             with cols[idx % 2]:
-                is_enrolled = is_user_enrolled(user['id'], course[0])
-                with st.container():
-                    st.markdown(f"""
-                    <div class="course-card">
-                        <h3 class="course-title">{course[1]}</h3>
-                        <p class="course-subtitle">{course[2]}</p>
-                        <p class="course-desc">{course[3][:100]}...</p>
-                        <p style="font-size: 1rem; font-weight: bold; color: {ACCENT_COLOR};">{"Free" if course[4]==0 else f"₹{course[4]:,.0f}"}</p>
-                        {"<p style='font-size: 1rem; color: #4CAF50;'>✅ Enrolled</p>" if is_enrolled else ""}
-                    </div>
-                    """, unsafe_allow_html=True)
-                    if not is_enrolled:
-                        if st.button(f"Enroll in {course[1]}", key=f"enroll_{course[0]}", use_container_width=True):
-                            if enroll_user_in_course(user['id'], course[0]):
-                                st.success(f"Successfully enrolled in {course[1]}!")
-                                st.experimental_rerun()
+                display_course_card(course, user_id=user['id'])
 
 def page_admin_dashboard():
     """The dashboard for managing the platform, accessible only to admins."""
@@ -371,7 +353,7 @@ def page_admin_dashboard():
     dashboard_tab, users_tab, courses_tab, lessons_tab = st.tabs(["Dashboard", "Users", "Courses", "Lessons"])
     
     with dashboard_tab:
-        st.subheader("Admin Overview")
+        st.markdown(f"<h3 style='color: {HEADING_COLOR};'>Admin Overview</h3>", unsafe_allow_html=True)
         total_users = c.execute("SELECT COUNT(*) FROM users").fetchone()[0]
         total_courses = c.execute("SELECT COUNT(*) FROM courses").fetchone()[0]
         total_lessons = c.execute("SELECT COUNT(*) FROM lessons").fetchone()[0]
@@ -381,7 +363,7 @@ def page_admin_dashboard():
         st.metric(label="Total Lessons", value=total_lessons)
     
     with users_tab:
-        st.subheader("Manage Users")
+        st.markdown(f"<h3 style='color: {HEADING_COLOR};'>Manage Users</h3>", unsafe_allow_html=True)
         users = get_all_users()
         for user in users:
             col1, col2, col3 = st.columns([3, 1, 1])
@@ -394,7 +376,7 @@ def page_admin_dashboard():
                     st.experimental_rerun()
     
     with courses_tab:
-        st.subheader("Add New Course")
+        st.markdown(f"<h3 style='color: {HEADING_COLOR};'>Add New Course</h3>", unsafe_allow_html=True)
         with st.form("add_course_form"):
             title = st.text_input("Course Title")
             subtitle = st.text_input("Subtitle")
@@ -407,7 +389,7 @@ def page_admin_dashboard():
                 st.experimental_rerun()
         
         st.markdown("---")
-        st.subheader("Manage Existing Courses")
+        st.markdown(f"<h3 style='color: {HEADING_COLOR};'>Manage Existing Courses</h3>", unsafe_allow_html=True)
         courses = get_courses()
         for course in courses:
             col1, col2 = st.columns([3, 1])
@@ -420,7 +402,7 @@ def page_admin_dashboard():
                     st.experimental_rerun()
     
     with lessons_tab:
-        st.subheader("Add New Lesson")
+        st.markdown(f"<h3 style='color: {HEADING_COLOR};'>Add New Lesson</h3>", unsafe_allow_html=True)
         courses = get_courses()
         course_titles = [c[1] for c in courses]
         
@@ -448,7 +430,7 @@ def page_admin_dashboard():
                 st.experimental_rerun()
         
         st.markdown("---")
-        st.subheader("Manage Existing Lessons")
+        st.markdown(f"<h3 style='color: {HEADING_COLOR};'>Manage Existing Lessons</h3>", unsafe_allow_html=True)
         lessons = c.execute("SELECT lessons.lesson_id, lessons.title, courses.title FROM lessons JOIN courses ON lessons.course_id = courses.course_id ORDER BY courses.title, lessons.lesson_order").fetchall()
         
         for lesson in lessons:
@@ -463,7 +445,7 @@ def page_admin_dashboard():
                     
 def page_admin_login():
     """Simple login page for the administrator."""
-    st.title("Admin Login")
+    st.markdown(f"<h2 style='color: {PRIMARY_COLOR};'>Admin Login</h2>", unsafe_allow_html=True)
     password = st.text_input("Enter Admin Password", type="password")
     if st.button("Login as Admin"):
         if password == ADMIN_PASSWORD:
@@ -492,56 +474,62 @@ def main():
         html, body, .stApp {{
             font-family: 'Inter', sans-serif;
             background-color: {BACKGROUND_COLOR};
-            color: #E0E0E0;
+            color: {TEXT_COLOR};
+        }}
+        
+        .st-emotion-cache-18ni7z4.e1i5er191 {{
+            background-color: {BACKGROUND_COLOR};
         }}
         
         .course-card {{
             background: {CARD_COLOR};
             border-radius: 12px;
-            padding: 20px;
-            margin: 10px 0;
-            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.4);
-            transition: transform 0.2s ease-in-out;
-            border-left: 5px solid {ACCENT_COLOR};
+            padding: 24px;
+            margin: 16px 0;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
+            transition: transform 0.2s ease-in-out, box-shadow 0.2s ease-in-out;
+            border-left: 5px solid {PRIMARY_COLOR};
         }}
         .course-card:hover {{
-            transform: translateY(-5px);
-            box-shadow: 0 8px 15px rgba(0, 0, 0, 0.5);
+            transform: translateY(-8px);
+            box-shadow: 0 8px 25px rgba(0, 0, 0, 0.4);
         }}
         .course-title {{
-            font-size: 1.5rem;
+            font-size: 1.6rem;
             font-weight: 700;
-            color: white;
+            color: {HEADING_COLOR};
             margin-bottom: 0.5rem;
         }}
         .course-subtitle {{
-            font-size: 1rem;
-            color: #B0B0B0;
+            font-size: 1.1rem;
+            color: {SECONDARY_COLOR};
         }}
         .course-desc {{
-            font-size: 0.9rem;
-            color: #CCCCCC;
+            font-size: 1rem;
+            color: {TEXT_COLOR};
             margin-top: 10px;
         }}
         .stButton>button {{
-            background-color: {ACCENT_COLOR};
-            color: white;
+            background-color: {PRIMARY_COLOR};
+            color: {BACKGROUND_COLOR};
             border-radius: 8px;
             border: none;
             font-weight: 600;
-            padding: 10px 20px;
-            transition: background-color 0.2s ease-in-out;
+            padding: 12px 24px;
+            transition: background-color 0.2s ease-in-out, transform 0.1s ease-in-out;
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.2);
         }}
         .stButton>button:hover {{
             background-color: {SECONDARY_COLOR};
-            color: white;
+            color: {HEADING_COLOR};
+            transform: translateY(-2px);
         }}
         .stTextInput>div>div>input,
         .stSelectbox>div>div>select,
         .stTextArea>div>textarea,
         .stNumberInput>div>input {{
             background-color: #1e1e1e; 
-            color: #f5f5f5; 
+            color: {TEXT_COLOR}; 
             border: 1px solid #333333; 
             border-radius: 6px;
         }}
@@ -555,13 +543,13 @@ def main():
         }}
         .stTabs [data-baseweb="tab"] {{
             background-color: {BACKGROUND_COLOR};
-            color: #fff;
-            padding: 10px 20px;
+            color: {HEADING_COLOR};
+            padding: 12px 24px;
             border-radius: 8px;
-            border: 1px solid {ACCENT_COLOR};
+            border: 1px solid {PRIMARY_COLOR};
         }}
         .stTabs [aria-selected="true"] {{
-            background-color: {ACCENT_COLOR};
+            background-color: {PRIMARY_COLOR};
             color: {BACKGROUND_COLOR};
         }}
     </style>
