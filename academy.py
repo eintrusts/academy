@@ -144,10 +144,11 @@ body {background-color: #0d0f12; color: #e0e0e0;}
 .stNumberInput > div > input {
     background-color: #1e1e1e; color: #f5f5f5; border: 1px solid #333333; border-radius: 6px;
 }
-.course-card {background: #1c1c1c; border-radius: 12px; padding: 16px; margin: 12px; box-shadow: 0px 4px 10px rgba(0,0,0,0.6);}
+.course-card {background: #1c1c1c; border-radius: 12px; padding: 16px; margin: 12px; box-shadow: 0px 4px 10px rgba(0,0,0,0.6); position: relative;}
 .course-title {font-size: 22px; font-weight: bold; color: #f0f0f0;}
 .course-subtitle {font-size: 16px; color: #b0b0b0;}
-.course-desc {font-size: 14px; color: #cccccc;}
+.course-desc {font-size: 14px; color: #cccccc; margin-bottom: 12px;}
+.enroll-btn {background-color:#0a84ff;color:white;border:none;padding:8px 12px;border-radius:6px; cursor:pointer;}
 .center-container {display: flex; flex-direction: column; align-items: center; justify-content: center;}
 .center {text-align: center;}
 </style>
@@ -197,6 +198,9 @@ def page_login():
         else:
             st.error("Invalid credentials.")
 
+# ---------------------------
+# Student Dashboard
+# ---------------------------
 def page_student_dashboard():
     student = st.session_state.get("student")
     if not student:
@@ -204,15 +208,12 @@ def page_student_dashboard():
         return
 
     tabs = st.tabs(["All Courses", "My Courses", "Edit Profile", "Logout"])
-
     with tabs[0]:
         courses = get_courses()
         display_courses(courses, enroll=True, student_id=student[0])
-        
     with tabs[1]:
         enrolled_courses = get_student_courses(student[0])
         display_courses(enrolled_courses, show_lessons=True)
-        
     with tabs[2]:
         with st.form("edit_profile_form"):
             full_name = st.text_input("Full Name", value=student[1])
@@ -227,11 +228,51 @@ def page_student_dashboard():
                     st.session_state["student"] = authenticate_student(email, password)
                 else:
                     st.error("Email already exists.")
-
     with tabs[3]:
         st.info("Logged out successfully.")
         st.session_state.clear()
         st.session_state["page"] = "home"
+
+# ---------------------------
+# Function to display course cards with enroll inside card
+# ---------------------------
+def display_courses(courses, enroll=False, student_id=None, show_lessons=False, editable=False):
+    if not courses:
+        st.info("No courses available.")
+        return
+    cols = st.columns(2)
+    for idx, course in enumerate(courses):
+        with cols[idx % 2]:
+            button_key = f"enroll_{course[0]}"
+            enroll_html = f'<button class="enroll-btn">Enroll</button>' if enroll else ""
+            st.markdown(f"""
+            <div class="course-card">
+                <div class="course-title">{course[1]}</div>
+                <div class="course-subtitle">{course[2]}</div>
+                <div class="course-desc">{course[3][:150]}...</div>
+                <p><b>Price:</b> {format_price(course[4])}</p>
+                {enroll_html}
+            </div>
+            """, unsafe_allow_html=True)
+            if enroll and st.button("Enroll", key=button_key):
+                st.session_state["page"] = "student_dashboard"
+                st.session_state["enroll_course"] = course[0]
+
+# ---------------------------
+# Main Home Page
+# ---------------------------
+def page_home():
+    tabs = st.tabs(["Courses", "Student", "Admin"])
+    with tabs[0]:
+        st.subheader("All Courses")
+        courses = get_courses()
+        display_courses(courses, enroll=True)
+    with tabs[1]:
+        sub_tabs = st.tabs(["Login", "Signup"])
+        with sub_tabs[0]: page_login()
+        with sub_tabs[1]: page_signup()
+    with tabs[2]:
+        page_admin()
 
 # ---------------------------
 # Admin Pages
@@ -247,13 +288,11 @@ def page_admin():
 
 def page_admin_dashboard():
     tabs = st.tabs(["Dashboard", "Students", "Courses & Lessons", "Logout"])
-
     with tabs[0]:
         st.subheader("Overview")
         st.write(f"Total Students: {c.execute('SELECT COUNT(*) FROM students').fetchone()[0]}")
         st.write(f"Total Courses: {c.execute('SELECT COUNT(*) FROM courses').fetchone()[0]}")
         st.write(f"Total Lessons: {c.execute('SELECT COUNT(*) FROM lessons').fetchone()[0]}")
-
     with tabs[1]:
         st.subheader("Manage Students")
         students = c.execute("SELECT * FROM students").fetchall()
@@ -262,7 +301,6 @@ def page_admin_dashboard():
             if st.button(f"Delete {s[1]}", key=f"del_student_{s[0]}"):
                 c.execute("DELETE FROM students WHERE student_id=?", (s[0],))
                 conn.commit()
-
     with tabs[2]:
         st.subheader("Manage Courses & Lessons")
         courses = get_courses()
@@ -275,7 +313,6 @@ def page_admin_dashboard():
             price = st.number_input("Price", min_value=0.0, step=1.0)
             if st.form_submit_button("Add Course"):
                 add_course(title, subtitle, desc, price)
-
         with st.form("add_lesson_form"):
             course_id = st.selectbox("Select Course", [c[0] for c in get_courses()])
             title = st.text_input("Lesson Title")
@@ -285,61 +322,10 @@ def page_admin_dashboard():
             link = st.text_input("External Link")
             if st.form_submit_button("Add Lesson"):
                 add_lesson(course_id, title, desc, lesson_type, convert_file_to_bytes(uploaded_file), link)
-
     with tabs[3]:
         st.info("Admin logged out successfully.")
         st.session_state.clear()
         st.session_state["page"] = "home"
-
-# ---------------------------
-# Edit Course Page
-# ---------------------------
-def page_edit_course():
-    course = st.session_state.get("edit_course")
-    if course:
-        st.header(f"Edit Course: {course[1]}")
-        with st.form("edit_course_form"):
-            title = st.text_input("Title", value=course[1])
-            subtitle = st.text_input("Subtitle", value=course[2])
-            desc = st.text_area("Description", value=course[3])
-            price = st.number_input("Price", value=course[4], min_value=0.0, step=1.0)
-            if st.form_submit_button("Update Course"):
-                update_course(course[0], title, subtitle, desc, price)
-                st.success("Course updated!")
-                st.session_state["page"] = "admin_dashboard"
-
-# ---------------------------
-# Home Page
-# ---------------------------
-def page_home():
-    student_id = st.session_state.get("student", [None])[0] if "student" in st.session_state else None
-    tabs = st.tabs(["Courses", "Student", "Admin"])
-    
-    with tabs[0]:
-        st.subheader("All Courses")
-        courses = get_courses()
-        for course in courses:
-            st.markdown(f"""
-            <div class="course-card">
-                <div class="course-title">{course[1]}</div>
-                <div class="course-subtitle">{course[2]}</div>
-                <div class="course-desc">{course[3][:150]}...</div>
-                <p><b>Price:</b> {format_price(course[4])}</p>
-            </div>
-            """, unsafe_allow_html=True)
-            if st.button("Enroll", key=f"enroll_{course[0]}"):
-                st.session_state["page"] = "student_dashboard"
-                st.session_state["enroll_course"] = course[0]
-
-    with tabs[1]:
-        st.subheader("Student")
-        sub_tabs = st.tabs(["Login", "Signup"])
-        with sub_tabs[0]: page_login()
-        with sub_tabs[1]: page_signup()
-    
-    with tabs[2]:
-        st.subheader("Admin")
-        page_admin()
 
 # ---------------------------
 # Main Navigation
@@ -355,5 +341,3 @@ elif st.session_state["page"] == "student_dashboard":
     page_student_dashboard()
 elif st.session_state["page"] == "admin_dashboard":
     page_admin_dashboard()
-elif st.session_state["page"] == "edit_course":
-    page_edit_course()
