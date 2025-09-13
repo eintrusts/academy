@@ -145,7 +145,7 @@ body {background-color: #0d0f12; color: #e0e0e0;}
 .course-subtitle {font-size: 16px; color: #b0b0b0;}
 .course-desc {font-size: 14px; color: #cccccc; margin-bottom: 12px;}
 .enroll-btn {background-color:#0a84ff;color:white;border:none;padding:8px 12px;border-radius:6px; cursor:pointer;}
-.center-container {display: flex; flex-direction: column; align-items: center; justify-content: center;}
+.center-container {display: flex; flex-direction: row; align-items: center; justify-content: center; gap:10px;}
 .center {text-align: center;}
 </style>
 """, unsafe_allow_html=True)
@@ -155,7 +155,7 @@ body {background-color: #0d0f12; color: #e0e0e0;}
 # ---------------------------
 def display_logo_and_title_center():
     st.markdown('<div class="center-container">', unsafe_allow_html=True)
-    st.image("https://github.com/eintrusts/CAP/blob/main/EinTrust%20%20(2).png?raw=true", width=180)
+    st.image("https://github.com/eintrusts/CAP/blob/main/EinTrust%20%20(2).png?raw=true", width=60)
     st.markdown("<h2 class='center'>EinTrust Academy</h2>", unsafe_allow_html=True)
     st.markdown('</div>', unsafe_allow_html=True)
 
