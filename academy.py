@@ -8,6 +8,7 @@ import re
 conn = sqlite3.connect("academy.db", check_same_thread=False)
 c = conn.cursor()
 
+# Tables
 c.execute('''CREATE TABLE IF NOT EXISTS courses (
     course_id INTEGER PRIMARY KEY AUTOINCREMENT,
     title TEXT,
@@ -59,9 +60,7 @@ def is_valid_password(password):
             re.search(r"[!@#$%^&*(),.?\":{}|<>]", password))
 
 def convert_file_to_bytes(uploaded_file):
-    if uploaded_file:
-        return uploaded_file.read()
-    return None
+    return uploaded_file.read() if uploaded_file else None
 
 def get_courses():
     return c.execute("SELECT * FROM courses ORDER BY course_id DESC").fetchall()
@@ -125,10 +124,7 @@ def add_lesson(course_id, title, description, lesson_type, file, link):
     conn.commit()
 
 def format_price(price):
-    if price == 0:
-        return "Free"
-    else:
-        return f"₹{price:,.0f}"
+    return "Free" if price==0 else f"₹{price:,.0f}"
 
 # ---------------------------
 # Page Config + CSS
@@ -144,7 +140,7 @@ body {background-color: #0d0f12; color: #e0e0e0;}
 .stNumberInput > div > input {
     background-color: #1e1e1e; color: #f5f5f5; border: 1px solid #333333; border-radius: 6px;
 }
-.course-card {background: #1c1c1c; border-radius: 12px; padding: 16px; margin: 12px; box-shadow: 0px 4px 10px rgba(0,0,0,0.6); position: relative;}
+.course-card {background: #1c1c1c; border-radius: 12px; padding: 16px; margin: 12px; box-shadow: 0px 4px 10px rgba(0,0,0,0.6);}
 .course-title {font-size: 22px; font-weight: bold; color: #f0f0f0;}
 .course-subtitle {font-size: 16px; color: #b0b0b0;}
 .course-desc {font-size: 14px; color: #cccccc; margin-bottom: 12px;}
@@ -164,7 +160,7 @@ def display_logo_and_title_center():
     st.markdown('</div>', unsafe_allow_html=True)
 
 # ---------------------------
-# Student Pages
+# Pages: Signup/Login
 # ---------------------------
 def page_signup():
     st.header("Create Profile")
@@ -183,6 +179,7 @@ def page_signup():
             else:
                 if add_student(full_name, email, password, gender, profession, institution):
                     st.success("Profile created! Please login.")
+                    st.session_state["page"] = "home"
                 else:
                     st.error("Email already registered.")
 
@@ -199,6 +196,35 @@ def page_login():
             st.error("Invalid credentials.")
 
 # ---------------------------
+# Display Courses
+# ---------------------------
+def display_courses(courses, enroll=False, student_id=None, show_lessons=False, editable=False):
+    if not courses:
+        st.info("No courses available.")
+        return
+    cols = st.columns(2)
+    for idx, course in enumerate(courses):
+        with cols[idx % 2]:
+            st.markdown(f"""
+            <div class="course-card">
+                <div class="course-title">{course[1]}</div>
+                <div class="course-subtitle">{course[2]}</div>
+                <div class="course-desc">{course[3][:150]}...</div>
+                <p><b>Price:</b> {format_price(course[4])}</p>
+            </div>
+            """, unsafe_allow_html=True)
+            # Enroll button inside card
+            if enroll:
+                if st.button("Enroll", key=f"enroll_{course[0]}"):
+                    if "student" not in st.session_state:
+                        st.session_state["page"] = "home"
+                        st.session_state["active_tab"] = "Student"
+                    else:
+                        enroll_student_in_course(st.session_state["student"][0], course[0])
+                        st.success(f"Enrolled in {course[1]}")
+                        st.session_state["page"] = "student_dashboard"
+
+# ---------------------------
 # Student Dashboard
 # ---------------------------
 def page_student_dashboard():
@@ -206,14 +232,11 @@ def page_student_dashboard():
     if not student:
         st.warning("Please login first.")
         return
-
     tabs = st.tabs(["All Courses", "My Courses", "Edit Profile", "Logout"])
     with tabs[0]:
-        courses = get_courses()
-        display_courses(courses, enroll=True, student_id=student[0])
+        display_courses(get_courses(), enroll=True, student_id=student[0])
     with tabs[1]:
-        enrolled_courses = get_student_courses(student[0])
-        display_courses(enrolled_courses, show_lessons=True)
+        display_courses(get_student_courses(student[0]), show_lessons=True)
     with tabs[2]:
         with st.form("edit_profile_form"):
             full_name = st.text_input("Full Name", value=student[1])
@@ -232,47 +255,6 @@ def page_student_dashboard():
         st.info("Logged out successfully.")
         st.session_state.clear()
         st.session_state["page"] = "home"
-
-# ---------------------------
-# Function to display course cards with enroll inside card
-# ---------------------------
-def display_courses(courses, enroll=False, student_id=None, show_lessons=False, editable=False):
-    if not courses:
-        st.info("No courses available.")
-        return
-    cols = st.columns(2)
-    for idx, course in enumerate(courses):
-        with cols[idx % 2]:
-            button_key = f"enroll_{course[0]}"
-            enroll_html = f'<button class="enroll-btn">Enroll</button>' if enroll else ""
-            st.markdown(f"""
-            <div class="course-card">
-                <div class="course-title">{course[1]}</div>
-                <div class="course-subtitle">{course[2]}</div>
-                <div class="course-desc">{course[3][:150]}...</div>
-                <p><b>Price:</b> {format_price(course[4])}</p>
-                {enroll_html}
-            </div>
-            """, unsafe_allow_html=True)
-            if enroll and st.button("Enroll", key=button_key):
-                st.session_state["page"] = "student_dashboard"
-                st.session_state["enroll_course"] = course[0]
-
-# ---------------------------
-# Main Home Page
-# ---------------------------
-def page_home():
-    tabs = st.tabs(["Courses", "Student", "Admin"])
-    with tabs[0]:
-        st.subheader("All Courses")
-        courses = get_courses()
-        display_courses(courses, enroll=True)
-    with tabs[1]:
-        sub_tabs = st.tabs(["Login", "Signup"])
-        with sub_tabs[0]: page_login()
-        with sub_tabs[1]: page_signup()
-    with tabs[2]:
-        page_admin()
 
 # ---------------------------
 # Admin Pages
@@ -303,32 +285,32 @@ def page_admin_dashboard():
                 conn.commit()
     with tabs[2]:
         st.subheader("Manage Courses & Lessons")
-        courses = get_courses()
-        display_courses(courses, editable=True, show_lessons=True)
-        st.markdown("---")
-        with st.form("add_course_form"):
-            title = st.text_input("Title")
-            subtitle = st.text_input("Subtitle")
-            desc = st.text_area("Description")
-            price = st.number_input("Price", min_value=0.0, step=1.0)
-            if st.form_submit_button("Add Course"):
-                add_course(title, subtitle, desc, price)
-        with st.form("add_lesson_form"):
-            course_id = st.selectbox("Select Course", [c[0] for c in get_courses()])
-            title = st.text_input("Lesson Title")
-            desc = st.text_area("Lesson Description")
-            lesson_type = st.selectbox("Type", ["Video", "PDF", "PPT", "Link"])
-            uploaded_file = st.file_uploader("Upload File")
-            link = st.text_input("External Link")
-            if st.form_submit_button("Add Lesson"):
-                add_lesson(course_id, title, desc, lesson_type, convert_file_to_bytes(uploaded_file), link)
+        display_courses(get_courses(), editable=True, show_lessons=True)
     with tabs[3]:
         st.info("Admin logged out successfully.")
         st.session_state.clear()
         st.session_state["page"] = "home"
 
 # ---------------------------
-# Main Navigation
+# Main Home Page
+# ---------------------------
+def page_home():
+    active_tab = st.session_state.get("active_tab", "Courses")
+    tabs = st.tabs(["Courses", "Student", "Admin"])
+    # Courses tab
+    with tabs[0]:
+        display_courses(get_courses(), enroll=True)
+    # Student tab
+    with tabs[1]:
+        sub_tabs = st.tabs(["Login", "Signup"])
+        with sub_tabs[0]: page_login()
+        with sub_tabs[1]: page_signup()
+    # Admin tab
+    with tabs[2]:
+        page_admin()
+
+# ---------------------------
+# Main App
 # ---------------------------
 display_logo_and_title_center()
 
