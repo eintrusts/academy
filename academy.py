@@ -209,19 +209,41 @@ def display_courses(courses, enroll=False, student_id=None, show_modules=False, 
 # Home Page = Courses Page
 # ---------------------------
 def page_home():
+    # Header
     st.markdown("""
 <div style="display:flex; align-items:center; margin-bottom:20px;">
-<img src="logo.png" width="80" style="margin-right:15px;">
-<h1 style='font-family:Times New Roman; font-size:80px; color:#ffffff; margin:0;'>EinTrust Academy</h1>
+<img src="https://github.com/eintrusts/CAP/blob/main/EinTrust%20%20(2).png?raw=true" width="80" style="margin-right:15px;">
+<h1 style='font-family:Times New Roman; font-size:80px; color:#ffffff; margin:0; font-weight:normal;'>EinTrust Academy</h1>
 </div>
 """, unsafe_allow_html=True)
 
-    st.subheader("Available Courses")
-    courses = get_courses()
-    display_courses(courses, enroll=True)
+    main_tabs = st.tabs(["Courses", "Student", "Admin"])
 
+    # Courses Tab
+    with main_tabs[0]:
+        st.subheader("Available Courses")
+        student_id = st.session_state.get("student", [None])[0] if "student" in st.session_state else None
+        courses = get_courses()
+        display_courses(courses, enroll=True, student_id=student_id)
+
+    # Student Tab
+    with main_tabs[1]:
+        student_tabs = st.tabs(["Signup", "Login"])
+        if st.session_state.get("student_tab","Signup") == "Signup":
+            with student_tabs[0]:
+                page_signup()
+        else:
+            with student_tabs[1]:
+                page_login()
+
+    # Admin Tab
+    with main_tabs[2]:
+        page_admin()
+
+    # Footer
     st.markdown("""
 <div style="text-align:center; padding:15px; color:#888888;">
+&copy; 2025 EinTrust Academy. All rights reserved. <br>
 <a href="https://www.eintrusts.com" target="_blank" style="color:#888888; text-decoration:none;">About Us</a> | 
 <a href="mailto:learn@eintrusts.com" style="color:#888888; text-decoration:none;">Contact Us</a>
 </div>
