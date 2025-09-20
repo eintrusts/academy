@@ -1,11 +1,12 @@
 import streamlit as st
 import sqlite3
 import re
+import io
 import pandas as pd
 import plotly.express as px
 
 # ---------------------------
-# Database Setup
+# DB Setup
 # ---------------------------
 conn = sqlite3.connect("academy.db", check_same_thread=False)
 c = conn.cursor()
@@ -82,9 +83,8 @@ def get_modules(course_id):
 
 def add_student(full_name, email, password, gender, profession, institution):
     try:
-        c.execute(
-            "INSERT INTO students (full_name,email,password,gender,profession,institution,first_enrollment,last_login) VALUES (?,?,?,?,?,?,datetime('now'),datetime('now'))",
-            (full_name, email, password, gender, profession, institution))
+        c.execute("INSERT INTO students (full_name,email,password,gender,profession,institution,first_enrollment,last_login) VALUES (?,?,?,?,?,?,datetime('now'),datetime('now'))",
+                  (full_name, email, password, gender, profession, institution))
         conn.commit()
         return True
     except sqlite3.IntegrityError:
@@ -223,7 +223,7 @@ def page_home():
         courses = get_courses()
         display_courses(courses, enroll=True, student_id=student_id)
 
-    # Student Tab with sub-tabs
+    # Student Tab
     with main_tabs[1]:
         default_student_tab = st.session_state.get("student_tab", "Signup")
         student_tabs = st.tabs(["Signup", "Login"])
@@ -328,7 +328,9 @@ def page_admin_dashboard():
     st.header("Admin Dashboard")
     tabs = st.tabs(["Dashboard","Students Data","Courses Data","Logout"])
 
+    # ---------------------------
     # Dashboard Metrics
+    # ---------------------------
     with tabs[0]:
         st.subheader("Statistics Overview")
         total_students = c.execute("SELECT COUNT(*) FROM students").fetchone()[0]
@@ -359,7 +361,9 @@ def page_admin_dashboard():
             fig2 = px.bar(df_module, x="Module", y="Views", title="Module Views", text="Views")
             st.plotly_chart(fig2, use_container_width=True)
 
+    # ---------------------------
     # Students Data
+    # ---------------------------
     with tabs[1]:
         st.subheader("Students List")
         students = c.execute("SELECT * FROM students").fetchall()
@@ -369,7 +373,9 @@ def page_admin_dashboard():
         csv = df_students.to_csv(index=False).encode('utf-8')
         st.download_button("Download Students Data", data=csv, file_name="students.csv", mime="text/csv")
 
+    # ---------------------------
     # Courses Data
+    # ---------------------------
     with tabs[2]:
         st.subheader("Courses Management")
         course_tabs = st.tabs(["Add Course","Update Course"])
@@ -404,30 +410,33 @@ def page_admin_dashboard():
         # Update Course
         with course_tabs[1]:
             courses = get_courses()
-            course_titles = [f"{c[0]} - {c[1]}" for c in courses]
-            selected = st.selectbox("Select Course to Update", course_titles)
-            if selected:
-                course_id = int(selected.split(" - ")[0])
-                course = c.execute("SELECT * FROM courses WHERE course_id=?", (course_id,)).fetchone()
-                with st.form("update_course_form"):
-                    title = st.text_input("Course Title", value=course[1])
-                    subtitle = st.text_input("Subtitle", value=course[2])
-                    desc = st.text_area("Description", value=course[3])
-                    price = st.number_input("Price", value=course[4], min_value=0.0, step=1.0)
-                    if st.form_submit_button("Update Course"):
-                        update_course(course_id, title, subtitle, desc, price)
-                        st.success("Course updated!")
-                        st.experimental_rerun()
-                st.markdown("### Modules")
-                modules = get_modules(course_id)
-                for m in modules:
-                    st.write(f"{m[2]} ({m[4]})")
-                    if st.button(f"Delete Module {m[2]}", key=f"delmod_{m[0]}"):
-                        delete_module(m[0])
-                        st.success("Module deleted!")
-                        st.experimental_rerun()
+            if courses:
+                course_titles = [f"{c[0]} - {c[1]}" for c in courses]
+                selected = st.selectbox("Select Course to Update", course_titles)
+                if selected:
+                    course_id = int(selected.split(" - ")[0])
+                    course = c.execute("SELECT * FROM courses WHERE course_id=?", (course_id,)).fetchone()
+                    with st.form("update_course_form"):
+                        title = st.text_input("Course Title", value=course[1])
+                        subtitle = st.text_input("Subtitle", value=course[2])
+                        desc = st.text_area("Description", value=course[3])
+                        price = st.number_input("Price", value=course[4], min_value=0.0, step=1.0)
+                        if st.form_submit_button("Update Course"):
+                            update_course(course_id, title, subtitle, desc, price)
+                            st.success("Course updated!")
+                            st.experimental_rerun()
+                    st.markdown("### Modules")
+                    modules = get_modules(course_id)
+                    for m in modules:
+                        st.write(f"{m[2]} ({m[4]})")
+                        if st.button(f"Delete Module {m[2]}", key=f"delmod_{m[0]}"):
+                            delete_module(m[0])
+                            st.success("Module deleted!")
+                            st.experimental_rerun()
 
+    # ---------------------------
     # Logout
+    # ---------------------------
     with tabs[3]:
         if st.button("Logout"):
             st.session_state.clear()
