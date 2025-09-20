@@ -209,7 +209,6 @@ def display_courses(courses, enroll=False, student_id=None, show_modules=False, 
 # Home Page = Courses Page
 # ---------------------------
 def page_home():
-    # Header
     st.markdown("""
 <div style="display:flex; align-items:center; margin-bottom:20px;">
 <img src="https://github.com/eintrusts/CAP/blob/main/EinTrust%20%20(2).png?raw=true" width="80" style="margin-right:15px;">
@@ -228,8 +227,9 @@ def page_home():
 
     # Student Tab
     with main_tabs[1]:
+        default_tab = st.session_state.get("student_tab", "Signup")
         student_tabs = st.tabs(["Signup", "Login"])
-        if st.session_state.get("student_tab","Signup") == "Signup":
+        if default_tab == "Signup":
             with student_tabs[0]:
                 page_signup()
         else:
