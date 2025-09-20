@@ -1,12 +1,11 @@
 import streamlit as st
 import sqlite3
 import re
-import io
 import pandas as pd
 import plotly.express as px
 
 # ---------------------------
-# DB Setup
+# Database Setup
 # ---------------------------
 conn = sqlite3.connect("academy.db", check_same_thread=False)
 c = conn.cursor()
@@ -83,8 +82,9 @@ def get_modules(course_id):
 
 def add_student(full_name, email, password, gender, profession, institution):
     try:
-        c.execute("INSERT INTO students (full_name,email,password,gender,profession,institution,first_enrollment,last_login) VALUES (?,?,?,?,?,?,datetime('now'),datetime('now'))",
-                  (full_name, email, password, gender, profession, institution))
+        c.execute(
+            "INSERT INTO students (full_name,email,password,gender,profession,institution,first_enrollment,last_login) VALUES (?,?,?,?,?,?,datetime('now'),datetime('now'))",
+            (full_name, email, password, gender, profession, institution))
         conn.commit()
         return True
     except sqlite3.IntegrityError:
