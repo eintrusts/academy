@@ -2,3 +2,4 @@ streamlit
 fpdf
 Pillow
 razorpay
+plotly
