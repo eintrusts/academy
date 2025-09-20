@@ -330,11 +330,36 @@ def page_admin_dashboard():
         most_viewed_course_text = f"{most_viewed_course[0]} ({most_viewed_course[1]} views)" if most_viewed_course else "N/A"
         most_viewed_module = c.execute("SELECT title, views FROM modules ORDER BY views DESC LIMIT 1").fetchone()
         most_viewed_module_text = f"{most_viewed_module[0]} ({most_viewed_module[1]} views)" if most_viewed_module else "N/A"
-        cols = st.columns(4)
-        cols[0].metric("Total Students", total_students)
-        cols[1].metric("Total Courses", total_courses)
-        cols[2].metric("Most Viewed Course", most_viewed_course_text)
-        cols[3].metric("Most Viewed Module", most_viewed_module_text)
+
+        # Display metrics in cards
+        card_cols = st.columns(4)
+        card_cols[0].markdown(f"""
+<div class="course-card" style="background:#2a2a2a;">
+<h3>Total Students</h3>
+<p style="font-size:24px;">{total_students}</p>
+</div>
+""", unsafe_allow_html=True)
+
+        card_cols[1].markdown(f"""
+<div class="course-card" style="background:#2a2a2a;">
+<h3>Total Courses</h3>
+<p style="font-size:24px;">{total_courses}</p>
+</div>
+""", unsafe_allow_html=True)
+
+        card_cols[2].markdown(f"""
+<div class="course-card" style="background:#2a2a2a;">
+<h3>Most Viewed Course</h3>
+<p>{most_viewed_course_text}</p>
+</div>
+""", unsafe_allow_html=True)
+
+        card_cols[3].markdown(f"""
+<div class="course-card" style="background:#2a2a2a;">
+<h3>Most Viewed Module</h3>
+<p>{most_viewed_module_text}</p>
+</div>
+""", unsafe_allow_html=True)
 
         # Example chart: students per course
         course_counts = c.execute(
@@ -345,93 +370,51 @@ def page_admin_dashboard():
             fig = px.bar(df_chart, x="Course", y="Students", title="Students Enrolled per Course")
             st.plotly_chart(fig, use_container_width=True)
 
-    # Students Data
+    # Students Data Tab
     with tabs[1]:
         st.subheader("Students List")
         students = c.execute("SELECT * FROM students").fetchall()
+        if students:
+            cols = st.columns(3)
+            for i, student in enumerate(students):
+                with cols[i % 3]:
+                    st.markdown(f"""
+<div class="course-card">
+<h4>{student[1]}</h4>
+<p><b>Email:</b> {student[2]}</p>
+<p><b>Gender:</b> {student[4]}</p>
+<p><b>Profession:</b> {student[5]}</p>
+<p><b>Institution:</b> {student[6]}</p>
+<p><b>First Enrollment:</b> {student[7]}</p>
+<p><b>Last Login:</b> {student[8]}</p>
+</div>
+                    """, unsafe_allow_html=True)
+        else:
+            st.info("No students yet.")
+        # Download CSV
         df_students = pd.DataFrame(students, columns=["ID","Name","Email","Password","Gender","Profession","Institution","First Enrollment","Last Login"])
-        st.dataframe(df_students[["ID","Name","Email","First Enrollment","Last Login"]])
         csv = df_students.to_csv(index=False).encode('utf-8')
         st.download_button("Download Students Data", data=csv, file_name="students.csv", mime="text/csv")
 
-    # Course Data with Subtabs
+    # Course Data Tab (cards for courses and modules)
     with tabs[2]:
-        course_subtabs = st.tabs(["Add Course","Add Module","Update Course","Update Module"])
-
-        # Add Course
-        with course_subtabs[0]:
-            st.markdown("### Add Course")
-            with st.form("add_course_form"):
-                title = st.text_input("Course Title")
-                subtitle = st.text_input("Subtitle")
-                desc = st.text_area("Description")
-                price = st.number_input("Price", min_value=0.0, step=1.0)
-                if st.form_submit_button("Add Course"):
-                    course_id = add_course(title, subtitle, desc, price)
-                    st.success(f"Course added! ID: {course_id}")
-
-        # Add Module
-        with course_subtabs[1]:
-            st.markdown("### Add Module")
-            courses = get_courses()
-            course_options = {f"{c[1]} (ID:{c[0]})": c[0] for c in courses}
-            if courses:
-                with st.form("add_module_form"):
-                    selected_course = st.selectbox("Select Course", list(course_options.keys()))
-                    course_id = course_options[selected_course]
-                    title = st.text_input("Module Title")
-                    desc = st.text_area("Description")
-                    module_type = st.selectbox("Module Type", ["Video","PDF","Link"])
-                    file = st.file_uploader("Upload File", type=["pdf","mp4"], key="module_file")
-                    link = st.text_input("External Link (optional)")
-                    if st.form_submit_button("Add Module"):
-                        add_module(course_id, title, desc, module_type, convert_file_to_bytes(file), link)
-                        st.success("Module added!")
-
-        # Update Course
-        with course_subtabs[2]:
-            st.markdown("### Update / Delete Course")
-            courses = get_courses()
-            course_options = {f"{c[1]} (ID:{c[0]})": c for c in courses}
-            if courses:
-                selected_course = st.selectbox("Select Course", list(course_options.keys()))
-                course = course_options[selected_course]
-                with st.form("update_course_form"):
-                    title = st.text_input("Title", value=course[1])
-                    subtitle = st.text_input("Subtitle", value=course[2])
-                    desc = st.text_area("Description", value=course[3])
-                    price = st.number_input("Price", min_value=0.0, value=course[4])
-                    submitted = st.form_submit_button("Update Course")
-                    if submitted:
-                        update_course(course[0], title, subtitle, desc, price)
-                        st.success("Course updated!")
-                    if st.form_submit_button("Delete Course"):
-                        delete_course(course[0])
-                        st.success("Course deleted!")
-                        st.experimental_rerun()
-
-        # Update Module
-        with course_subtabs[3]:
-            st.markdown("### Update / Delete Module")
-            modules = c.execute("SELECT modules.module_id, modules.title, courses.title FROM modules JOIN courses ON modules.course_id=courses.course_id").fetchall()
-            module_options = {f"{m[1]} (Course: {m[2]}, ID:{m[0]})": m[0] for m in modules}
-            if modules:
-                selected_module = st.selectbox("Select Module", list(module_options.keys()))
-                module_id = module_options[selected_module]
-                module = c.execute("SELECT * FROM modules WHERE module_id=?", (module_id,)).fetchone()
-                with st.form("update_module_form"):
-                    title = st.text_input("Module Title", value=module[2])
-                    desc = st.text_area("Description", value=module[3])
-                    module_type = st.selectbox("Module Type", ["Video","PDF","Link"], index=["Video","PDF","Link"].index(module[4]))
-                    file = st.file_uploader("Upload File (optional)", type=["pdf","mp4"], key="update_module_file")
-                    link = st.text_input("External Link", value=module[6])
-                    submitted = st.form_submit_button("Update Module")
-                    if submitted:
-                        update_module(module_id, title, desc, module_type, convert_file_to_bytes(file) if file else module[5], link)
-                        st.success("Module updated!")
-                    if st.form_submit_button("Delete Module"):
-                        delete_module(module_id)
-                        st.success("Module deleted!")
+        st.subheader("Courses Management")
+        courses = get_courses()
+        if courses:
+            cols = st.columns(2)
+            for idx, course in enumerate(courses):
+                with cols[idx % 2]:
+                    st.markdown(f"""
+<div class="course-card">
+<h3>{course[1]}</h3>
+<p>{course[2]}</p>
+<p>{course[3][:100]}...</p>
+<p><b>Price:</b> {"Free" if course[4]==0 else f"₹{course[4]:,.0f}"}</p>
+</div>
+                    """, unsafe_allow_html=True)
+                    if st.button("Edit", key=f"edit_{course[0]}"):
+                        st.session_state["edit_course"] = course
+                        st.session_state["page"] = "update_course"
                         st.experimental_rerun()
 
     # Logout Tab
