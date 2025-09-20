@@ -430,20 +430,22 @@ def page_admin_dashboard():
         with sub_tab1:
             st.markdown("### Add New Course")
             with st.form("add_course_form"):
-                 title = st.text_input("Title")
-                 subtitle = st.text_input("Subtitle")
-                 desc = st.text_area("Description")
-                 price = st.number_input("Price", min_value=0.0, step=1.0)
-                 submitted = st.form_submit_button("Add Course")
-                if submitted:
-                try:
-                add_course(title, subtitle, desc, price)
-                st.success("Course added successfully!")
-                # Safe rerun after submission
-                st.session_state["page"] = "admin_dashboard"
-                st.experimental_rerun()
-                except Exception as e:
-                st.error(f"Error adding course: {e}")
+    title = st.text_input("Title")
+    subtitle = st.text_input("Subtitle")
+    desc = st.text_area("Description")
+    price = st.number_input("Price", min_value=0.0, step=1.0)
+    submitted = st.form_submit_button("Add Course")
+    
+    if submitted:
+        try:
+            add_course(title, subtitle, desc, price)
+            st.success("Course added successfully!")
+            # Safe rerun after submission
+            st.session_state["page"] = "admin_dashboard"
+            st.experimental_rerun()
+        except Exception as e:
+            st.error(f"Error adding course: {e}")
+
         
         # Update Course
         with sub_tab2:
