@@ -236,7 +236,8 @@ def page_home():
 
     st.markdown("""
 <div style="position: relative; bottom: 0; width: 100%; text-align: center; padding: 10px; color: #888888; margin-top: 40px;">
-&copy; 2025 EinTrust. All rights reserved.
+&copy; 2025 EinTrust. 
+All rights reserved.
 </div>
     """, unsafe_allow_html=True)
 
