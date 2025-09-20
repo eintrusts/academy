@@ -1,7 +1,6 @@
 import streamlit as st
 import sqlite3
 import re
-import io
 import pandas as pd
 
 # ---------------------------
@@ -209,6 +208,7 @@ def page_home():
 <h1 style="margin:0; color:#ffffff;">EinTrust Academy</h1>
 </div>
     """, unsafe_allow_html=True)
+
     main_tabs = st.tabs(["Courses", "Student", "Admin"])
     # Courses Tab
     with main_tabs[0]:
@@ -230,7 +230,6 @@ def page_home():
     # Admin Tab
     with main_tabs[2]:
         page_admin()
-    # Footer
     st.markdown("""
 <div style="position: relative; bottom: 0; width: 100%; text-align: center; padding: 10px; color: #888888; margin-top: 40px;">
 &copy; 2025 EinTrust Academy. All rights reserved.
@@ -303,7 +302,7 @@ def page_student_dashboard():
         st.warning("Please login first.")
 
 # ---------------------------
-# Admin Page
+# Admin Pages
 # ---------------------------
 def page_admin():
     st.header("Admin Login")
@@ -321,7 +320,7 @@ def page_admin():
 def page_admin_dashboard():
     st.header("Admin Dashboard")
     tabs = st.tabs(["Dashboard","Students Data","Courses Data","Logout"])
-    
+
     # Dashboard Metrics
     with tabs[0]:
         st.subheader("Statistics Overview")
@@ -336,7 +335,7 @@ def page_admin_dashboard():
         cols[1].metric("Total Courses", total_courses)
         cols[2].metric("Most Viewed Course", most_viewed_course_text)
         cols[3].metric("Most Viewed Module", most_viewed_module_text)
-    
+
     # Students Data
     with tabs[1]:
         st.subheader("Students List")
@@ -345,15 +344,14 @@ def page_admin_dashboard():
         st.dataframe(df_students[["ID","Name","Email","First Enrollment","Last Login"]])
         csv = df_students.to_csv(index=False).encode('utf-8')
         st.download_button("Download Students Data", data=csv, file_name="students.csv", mime="text/csv")
-    
+
     # Courses Data
     with tabs[2]:
         st.subheader("Courses Management")
-        course_tabs = st.tabs(["Add Course / Module","Update Course"])
-        
-        # Add Course / Module
+        course_tabs = st.tabs(["Add Course","Update Course"])
+
+        # Add Course
         with course_tabs[0]:
-            st.markdown("### Add New Course")
             with st.form("add_course_form"):
                 title = st.text_input("Course Title")
                 subtitle = st.text_input("Subtitle")
@@ -361,16 +359,12 @@ def page_admin_dashboard():
                 price = st.number_input("Price", min_value=0.0, step=1.0)
                 if st.form_submit_button("Add Course"):
                     course_id = add_course(title, subtitle, desc, price)
-                    st.success(f"Course '{title}' added!")
-            
-            st.markdown("### Add Module to Existing Course")
-            courses = get_courses()
-            if courses:
-                selected_course = st.selectbox(
-                    "Select Course for Adding Module",
-                    [f"{c[0]} - {c[1]}" for c in courses]
-                )
-                course_id = int(selected_course.split(" - ")[0])
+                    st.success("Course added! You can now add Modules to it.")
+                    st.session_state["selected_course"] = course_id
+                    st.experimental_rerun()
+            # Add Modules Form
+            if "selected_course" in st.session_state:
+                st.markdown(f"### Add Module to Course ID: {st.session_state['selected_course']}")
                 with st.form("add_module_form"):
                     module_title = st.text_input("Module Title")
                     module_desc = st.text_area("Module Description")
@@ -379,16 +373,15 @@ def page_admin_dashboard():
                     link = st.text_input("External Link (if applicable)")
                     if st.form_submit_button("Add Module"):
                         file_bytes = convert_file_to_bytes(uploaded_file)
-                        add_module(course_id, module_title, module_desc, module_type, file_bytes, link)
-                        st.success(f"Module '{module_title}' added to course ID {course_id}!")
-            else:
-                st.info("No courses available. Add a course first.")
-        
+                        add_module(st.session_state['selected_course'], module_title, module_desc, module_type, file_bytes, link)
+                        st.success("Module added!")
+
         # Update Course
         with course_tabs[1]:
             courses = get_courses()
-            if courses:
-                selected = st.selectbox("Select Course to Update", [f"{c[0]} - {c[1]}" for c in courses])
+            course_titles = [f"{c[0]} - {c[1]}" for c in courses]
+            selected = st.selectbox("Select Course to Update", course_titles)
+            if selected:
                 course_id = int(selected.split(" - ")[0])
                 course = c.execute("SELECT * FROM courses WHERE course_id=?", (course_id,)).fetchone()
                 with st.form("update_course_form"):
@@ -399,16 +392,32 @@ def page_admin_dashboard():
                     if st.form_submit_button("Update Course"):
                         update_course(course_id, title, subtitle, desc, price)
                         st.success("Course updated!")
+                        st.experimental_rerun()
+                # Modules display in cards with edit/delete
                 st.markdown("### Modules")
                 modules = get_modules(course_id)
-                for m in modules:
-                    st.write(f"{m[2]} ({m[4]})")
-                    if st.button(f"Delete Module {m[2]}", key=f"delmod_{m[0]}"):
-                        delete_module(m[0])
-                        st.success("Module deleted!")
-                        st.experimental_rerun()
-            else:
-                st.info("No courses available.")
+                if modules:
+                    mod_cols = st.columns(2)
+                    for idx, m in enumerate(modules):
+                        with mod_cols[idx % 2]:
+                            st.markdown(f"""
+<div class="course-card">
+<div class="course-title">{m[2]}</div>
+<div class="course-subtitle">Type: {m[4]}</div>
+<div class="course-desc">{m[3][:150]}...</div>
+<p>Link: {m[6] if m[6] else 'N/A'}</p>
+</div>
+                            """, unsafe_allow_html=True)
+                            if st.button(f"Edit Module {m[2]}", key=f"editmod_{m[0]}"):
+                                st.session_state["edit_module"] = m
+                                st.session_state["page"] = "edit_module"
+                                st.experimental_rerun()
+                            if st.button(f"Delete Module {m[2]}", key=f"delmod_{m[0]}"):
+                                delete_module(m[0])
+                                st.success(f"Module '{m[2]}' deleted!")
+                                st.experimental_rerun()
+                else:
+                    st.info("No modules available for this course.")
 
     # Logout
     with tabs[3]:
@@ -417,14 +426,40 @@ def page_admin_dashboard():
             st.experimental_rerun()
 
 # ---------------------------
-# Main
+# Edit Module Page
 # ---------------------------
-if "page" not in st.session_state:
-    st.session_state["page"] = "home"
+def page_edit_module():
+    st.header("Edit Module")
+    module = st.session_state.get("edit_module")
+    if not module:
+        st.warning("No module selected for editing.")
+        return
 
-if st.session_state["page"] == "home":
+    with st.form("edit_module_form"):
+        title = st.text_input("Module Title", value=module[2])
+        desc = st.text_area("Module Description", value=module[3])
+        module_type = st.selectbox("Module Type", ["Video","PPT","PDF","Task","Quiz"], index=["Video","PPT","PDF","Task","Quiz"].index(module[4]))
+        uploaded_file = st.file_uploader("Upload New File (if applicable)")
+        link = st.text_input("External Link (if applicable)", value=module[6])
+        if st.form_submit_button("Update Module"):
+            file_bytes = convert_file_to_bytes(uploaded_file)
+            if not file_bytes:
+                file_bytes = module[5]  # keep old file if no new upload
+            update_module(module[0], title, desc, module_type, file_bytes, link)
+            st.success("Module updated successfully!")
+            st.session_state.pop("edit_module")
+            st.session_state["page"] = "admin_dashboard"
+            st.experimental_rerun()
+
+# ---------------------------
+# Main App
+# ---------------------------
+page = st.session_state.get("page","home")
+if page == "home":
     page_home()
-elif st.session_state["page"] == "student_dashboard":
+elif page == "student_dashboard":
     page_student_dashboard()
-elif st.session_state["page"] == "admin_dashboard":
+elif page == "admin_dashboard":
     page_admin_dashboard()
+elif page == "edit_module":
+    page_edit_module()
