@@ -217,7 +217,7 @@ def page_home():
 
     # Courses Tab
     with main_tabs[0]:
-        st.subheader("Available Courses")
+        st.subheader("Courses")
         student_id = st.session_state.get("student", [None])[0] if "student" in st.session_state else None
         courses = get_courses()
         display_courses(courses, enroll=True, student_id=student_id)
@@ -236,7 +236,7 @@ def page_home():
 
     st.markdown("""
 <div style="position: relative; bottom: 0; width: 100%; text-align: center; padding: 10px; color: #888888; margin-top: 40px;">
-&copy; 2025 EinTrust Academy. All rights reserved.
+&copy; 2025 EinTrust. All rights reserved.
 </div>
     """, unsafe_allow_html=True)
 
