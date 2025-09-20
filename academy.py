@@ -1,9 +1,9 @@
 import streamlit as st
 import sqlite3
 import re
+import io
 import pandas as pd
 import plotly.express as px
-from datetime import datetime
 
 # ---------------------------
 # DB Setup
@@ -21,7 +21,7 @@ c.execute('''CREATE TABLE IF NOT EXISTS courses (
     views INTEGER DEFAULT 0
 )''')
 
-# Modules table
+# Modules table (formerly lessons)
 c.execute('''CREATE TABLE IF NOT EXISTS modules (
     module_id INTEGER PRIMARY KEY AUTOINCREMENT,
     course_id INTEGER,
@@ -83,19 +83,15 @@ def get_modules(course_id):
 
 def add_student(full_name, email, password, gender, profession, institution):
     try:
-        c.execute("INSERT INTO students (full_name,email,password,gender,profession,institution,first_enrollment) VALUES (?,?,?,?,?,?,?)",
-                  (full_name, email, password, gender, profession, institution, datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
+        c.execute("INSERT INTO students (full_name,email,password,gender,profession,institution) VALUES (?,?,?,?,?,?)",
+                  (full_name, email, password, gender, profession, institution))
         conn.commit()
         return True
     except sqlite3.IntegrityError:
         return False
 
 def authenticate_student(email, password):
-    student = c.execute("SELECT * FROM students WHERE email=? AND password=?", (email, password)).fetchone()
-    if student:
-        c.execute("UPDATE students SET last_login=? WHERE student_id=?", (datetime.now().strftime("%Y-%m-%d %H:%M:%S"), student[0]))
-        conn.commit()
-    return student
+    return c.execute("SELECT * FROM students WHERE email=? AND password=?", (email, password)).fetchone()
 
 def enroll_student_in_course(student_id, course_id):
     existing = c.execute("SELECT * FROM student_courses WHERE student_id=? AND course_id=?", (student_id, course_id)).fetchone()
@@ -140,7 +136,7 @@ def delete_module(module_id):
     conn.commit()
 
 # ---------------------------
-# CSS
+# Page Config + CSS
 # ---------------------------
 st.set_page_config(page_title="EinTrust Academy", layout="wide")
 st.markdown("""
@@ -172,7 +168,7 @@ body {background-color: #0d0f12; color: #e0e0e0;}
 """, unsafe_allow_html=True)
 
 # ---------------------------
-# Display Courses
+# Display Courses/Modules
 # ---------------------------
 def display_courses(courses, enroll=False, student_id=None, show_modules=False, editable=False):
     if not courses:
@@ -225,15 +221,11 @@ def page_home():
         display_courses(courses, enroll=True, student_id=student_id)
 
     with main_tabs[1]:
-        default_student_tab = st.session_state.get("student_tab", "Signup")
         student_tabs = st.tabs(["Signup", "Login"])
-        if default_student_tab == "Signup":
-            with student_tabs[0]:
-                page_signup()
-        else:
-            with student_tabs[1]:
-                page_login()
-        st.session_state["student_tab"] = "Signup"
+        with student_tabs[0]:
+            page_signup()
+        with student_tabs[1]:
+            page_login()
 
     with main_tabs[2]:
         page_admin()
@@ -245,7 +237,7 @@ def page_home():
     """, unsafe_allow_html=True)
 
 # ---------------------------
-# Student Signup/Login/Dashboard
+# Signup Page
 # ---------------------------
 def page_signup():
     st.header("Create Profile")
@@ -257,7 +249,6 @@ def page_signup():
         profession = st.text_input("Profession")
         institution = st.text_input("Institution")
         submitted = st.form_submit_button("Submit")
-        
         if submitted:
             if not is_valid_email(email):
                 st.error("Enter a valid email address.")
@@ -268,11 +259,13 @@ def page_signup():
                 if success:
                     st.success("Profile created successfully! Redirecting to login...")
                     st.session_state["page"] = "home"
-                    st.session_state["student_tab"] = "Login"
                     st.experimental_rerun()
                 else:
                     st.error("Email already registered. Please login.")
 
+# ---------------------------
+# Login Page
+# ---------------------------
 def page_login():
     st.header("Student Login")
     email = st.text_input("Email ID", key="login_email")
@@ -286,6 +279,9 @@ def page_login():
         else:
             st.error("Invalid credentials.")
 
+# ---------------------------
+# Student Dashboard
+# ---------------------------
 def page_student_dashboard():
     st.header("Student Dashboard")
     student = st.session_state.get("student")
@@ -295,9 +291,11 @@ def page_student_dashboard():
         st.subheader("Available Courses")
         courses = get_courses()
         display_courses(courses, enroll=True, student_id=student[0])
+
         st.subheader("Your Enrolled Courses")
         enrolled_courses = get_student_courses(student[0])
         display_courses(enrolled_courses, show_modules=True)
+
         if st.button("Logout"):
             st.session_state.clear()
             st.experimental_rerun()
@@ -305,7 +303,7 @@ def page_student_dashboard():
         st.warning("Please login first.")
 
 # ---------------------------
-# Admin
+# Admin Page
 # ---------------------------
 def page_admin():
     st.header("Admin Login")
@@ -318,127 +316,142 @@ def page_admin():
             st.error("Wrong admin password.")
 
 # ---------------------------
-# Admin Dashboard Full Code
+# Admin Dashboard
 # ---------------------------
 def page_admin_dashboard():
-    st.header("Admin Dashboard")
-    tabs = st.tabs(["Dashboard","Students Data","Courses Data","Logout"])
+    tabs = st.tabs(["Dashboard", "Students Data", "Courses Data", "Logout"])
 
-    # ------------------ Dashboard Tab ------------------
+    # -------------- Dashboard ---------------
     with tabs[0]:
         st.subheader("Statistics Overview")
         total_students = c.execute("SELECT COUNT(*) FROM students").fetchone()[0]
         total_courses = c.execute("SELECT COUNT(*) FROM courses").fetchone()[0]
+
         most_viewed_course = c.execute("SELECT title, views FROM courses ORDER BY views DESC LIMIT 1").fetchone()
+        most_viewed_course_text = f"{most_viewed_course[0]} ({most_viewed_course[1]} views)" if most_viewed_course else "N/A"
+
         most_viewed_module = c.execute("SELECT title, views FROM modules ORDER BY views DESC LIMIT 1").fetchone()
+        most_viewed_module_text = f"{most_viewed_module[0]} ({most_viewed_module[1]} views)" if most_viewed_module else "N/A"
 
         cols = st.columns(4)
         cols[0].metric("Total Students", total_students)
         cols[1].metric("Total Courses", total_courses)
-        cols[2].metric("Most Viewed Course", f"{most_viewed_course[0]} ({most_viewed_course[1]} views)" if most_viewed_course else "N/A")
-        cols[3].metric("Most Viewed Module", f"{most_viewed_module[0]} ({most_viewed_module[1]} views)" if most_viewed_module else "N/A")
+        cols[2].metric("Most Viewed Course", most_viewed_course_text)
+        cols[3].metric("Most Viewed Module", most_viewed_module_text)
 
-        st.subheader("Most Viewed Courses Chart")
-        course_views = pd.DataFrame(c.execute("SELECT title, views FROM courses ORDER BY views DESC").fetchall(), columns=["Course","Views"])
-        if not course_views.empty:
-            fig = px.bar(course_views, x="Course", y="Views", color="Views", title="Most Viewed Courses", text="Views")
+        # Graphs
+        course_views = c.execute("SELECT title, views FROM courses").fetchall()
+        if course_views:
+            df_course = pd.DataFrame(course_views, columns=["Course","Views"])
+            fig = px.bar(df_course, x="Course", y="Views", title="Course Views", text="Views")
             st.plotly_chart(fig, use_container_width=True)
 
-        st.subheader("Most Viewed Modules Chart")
-        module_views = pd.DataFrame(c.execute("SELECT title, views FROM modules ORDER BY views DESC").fetchall(), columns=["Module","Views"])
-        if not module_views.empty:
-            fig2 = px.bar(module_views, x="Module", y="Views", color="Views", title="Most Viewed Modules", text="Views")
+        module_views = c.execute("SELECT title, views FROM modules").fetchall()
+        if module_views:
+            df_module = pd.DataFrame(module_views, columns=["Module","Views"])
+            fig2 = px.bar(df_module, x="Module", y="Views", title="Module Views", text="Views")
             st.plotly_chart(fig2, use_container_width=True)
 
-    # ------------------ Students Data ------------------
+    # -------------- Students Data ---------------
     with tabs[1]:
-        st.subheader("Students List")
-        students = pd.DataFrame(c.execute("SELECT student_id, full_name, email, first_enrollment, last_login FROM students").fetchall(),
-                                columns=["ID","Student Name","Email ID","First Enrollment","Last Login"])
-        st.dataframe(students, use_container_width=True)
+        st.subheader("Students Table")
+        students = c.execute("SELECT student_id, full_name, email, first_enrollment, last_login FROM students").fetchall()
+        df = pd.DataFrame(students, columns=["ID","Student Name","Email ID","First Enrollment","Last Login"])
+        st.dataframe(df)
+        csv = df.to_csv(index=False).encode()
+        st.download_button("Download Students Data", data=csv, file_name="students.csv", mime="text/csv")
 
-        csv = students.to_csv(index=False).encode('utf-8')
-        st.download_button("Download Students Data", data=csv, file_name="students_data.csv", mime="text/csv")
-
-    # ------------------ Courses Data ------------------
+    # -------------- Courses Data ---------------
     with tabs[2]:
-        sub_tabs = st.tabs(["Add Course","Update Course"])
-        with sub_tabs[0]:
-            st.subheader("Add New Course")
+        course_subtabs = st.tabs(["Add Course", "Update Course"])
+        with course_subtabs[0]:
+            st.subheader("Add Course")
             with st.form("add_course_form"):
                 title = st.text_input("Title")
                 subtitle = st.text_input("Subtitle")
-                description = st.text_area("Description")
-                price = st.number_input("Price", 0, 1000000)
-                submitted = st.form_submit_button("Add Course")
-                if submitted:
-                    course_id = add_course(title, subtitle, description, price)
-                    st.success("Course Added Successfully!")
-                    st.session_state["edit_course"] = c.execute("SELECT * FROM courses WHERE course_id=?", (course_id,)).fetchone()
-                    st.experimental_rerun()
-            if "edit_course" in st.session_state:
-                course = st.session_state["edit_course"]
-                st.markdown(f"### Add Modules for {course[1]}")
-                with st.form("add_module_form"):
-                    m_title = st.text_input("Module Title")
-                    m_desc = st.text_area("Module Description")
-                    m_type = st.selectbox("Module Type", ["Video","PPT","PDF","Task","Quiz"])
-                    m_file = st.file_uploader("Upload File", type=None)
-                    m_link = st.text_input("Or External Link (Optional)")
-                    m_submitted = st.form_submit_button("Add Module")
-                    if m_submitted:
-                        add_module(course[0], m_title, m_desc, m_type, convert_file_to_bytes(m_file), m_link)
-                        st.success("Module Added Successfully!")
+                desc = st.text_area("Description")
+                price = st.number_input("Price", min_value=0.0, step=1.0)
+                if st.form_submit_button("Add Course"):
+                    course_id = add_course(title, subtitle, desc, price)
+                    st.success("Course added! Now add Modules below.")
 
-        with sub_tabs[1]:
-            st.subheader("Update Courses")
+            st.subheader("Add Modules")
             courses = get_courses()
-            course_choice = st.selectbox("Select Course to Update", [f"{c[0]} - {c[1]}" for c in courses])
-            selected_course_id = int(course_choice.split(" - ")[0])
-            course = c.execute("SELECT * FROM courses WHERE course_id=?", (selected_course_id,)).fetchone()
-            with st.form("update_course_form"):
-                title = st.text_input("Title", value=course[1])
-                subtitle = st.text_input("Subtitle", value=course[2])
-                description = st.text_area("Description", value=course[3])
-                price = st.number_input("Price", value=course[4])
-                update_submitted = st.form_submit_button("Update Course")
-                if update_submitted:
-                    update_course(course[0], title, subtitle, description, price)
-                    st.success("Course Updated Successfully!")
-            st.write("Modules in this Course:")
-            modules = get_modules(course[0])
-            for m in modules:
-                with st.expander(f"{m[2]} ({m[4]})"):
-                    m_new_title = st.text_input("Title", value=m[2], key=f"title_{m[0]}")
-                    m_new_desc = st.text_area("Description", value=m[3], key=f"desc_{m[0]}")
-                    m_new_type = st.selectbox("Module Type", ["Video","PPT","PDF","Task","Quiz"], index=["Video","PPT","PDF","Task","Quiz"].index(m[4]), key=f"type_{m[0]}")
-                    m_new_file = st.file_uploader("Upload File", type=None, key=f"file_{m[0]}")
-                    m_new_link = st.text_input("Or External Link", value=m[6], key=f"link_{m[0]}")
-                    if st.button("Update Module", key=f"update_module_{m[0]}"):
-                        update_module(m[0], m_new_title, m_new_desc, m_new_type, convert_file_to_bytes(m_new_file), m_new_link)
-                        st.success("Module Updated Successfully!")
-                    if st.button("Delete Module", key=f"del_module_{m[0]}"):
-                        delete_module(m[0])
-                        st.success("Module Deleted Successfully!")
-                        st.experimental_rerun()
+            if courses:
+                course_id = st.selectbox("Select Course", [c[0] for c in courses])
+                with st.form("add_module_form"):
+                    module_title = st.text_input("Module Title")
+                    module_desc = st.text_area("Module Description")
+                    module_type = st.selectbox("Type", ["Video","PPT","PDF","Task","Quiz"])
+                    uploaded_file = st.file_uploader("Upload File (if applicable)")
+                    link = st.text_input("External Link (if applicable)")
+                    if st.form_submit_button("Add Module"):
+                        file_bytes = convert_file_to_bytes(uploaded_file)
+                        add_module(course_id, module_title, module_desc, module_type, file_bytes, link)
+                        st.success("Module added!")
 
-    # ------------------ Logout Tab ------------------
+        with course_subtabs[1]:
+            st.subheader("Update Courses & Modules")
+            courses = get_courses()
+            if courses:
+                selected_course = st.selectbox("Select Course to Update", courses, format_func=lambda x: x[1])
+                if selected_course:
+                    new_title = st.text_input("Title", value=selected_course[1])
+                    new_subtitle = st.text_input("Subtitle", value=selected_course[2])
+                    new_desc = st.text_area("Description", value=selected_course[3])
+                    new_price = st.number_input("Price", value=selected_course[4], min_value=0.0, step=1.0)
+                    if st.button("Update Course Info"):
+                        update_course(selected_course[0], new_title, new_subtitle, new_desc, new_price)
+                        st.success("Course updated!")
+
+                    modules = get_modules(selected_course[0])
+                    for m in modules:
+                        st.markdown(f"**Module:** {m[2]} ({m[4]})")
+                        if st.button(f"Delete Module {m[2]}", key=f"del_mod_{m[0]}"):
+                            delete_module(m[0])
+                            st.experimental_rerun()
+
+    # -------------- Logout ---------------
     with tabs[3]:
-        if st.button("Logout Admin"):
+        if st.button("Logout"):
             st.session_state.clear()
             st.session_state["page"] = "home"
             st.experimental_rerun()
 
 # ---------------------------
-# Main Navigation
+# Edit Course Page
+# ---------------------------
+def page_edit_course():
+    course = st.session_state.get("edit_course")
+    if course:
+        st.header(f"Edit Course: {course[1]}")
+        with st.form("edit_course_form"):
+            title = st.text_input("Title", value=course[1])
+            subtitle = st.text_input("Subtitle", value=course[2])
+            desc = st.text_area("Description", value=course[3])
+            price = st.number_input("Price", value=course[4], min_value=0.0, step=1.0)
+            if st.form_submit_button("Update Course"):
+                update_course(course[0], title, subtitle, desc, price)
+                st.success("Course updated!")
+                st.session_state.pop("edit_course")
+                st.session_state["page"] = "admin_dashboard"
+                st.experimental_rerun()
+    else:
+        st.warning("No course selected to edit.")
+        st.session_state["page"] = "admin_dashboard"
+        st.experimental_rerun()
+
+# ---------------------------
+# Main
 # ---------------------------
 if "page" not in st.session_state:
     st.session_state["page"] = "home"
 
 if st.session_state["page"] == "home":
     page_home()
-elif st.session_state["page"] == "signup": page_signup()
-elif st.session_state["page"] == "login": page_login()
-elif st.session_state["page"] == "student_dashboard": page_student_dashboard()
-elif st.session_state["page"] == "admin_dashboard": page_admin_dashboard()
-elif st.session_state["page"] == "edit_course": st.write("Edit Course Page Placeholder")
+elif st.session_state["page"] == "student_dashboard":
+    page_student_dashboard()
+elif st.session_state["page"] == "admin_dashboard":
+    page_admin_dashboard()
+elif st.session_state["page"] == "edit_course":
+    page_edit_course()
