@@ -333,18 +333,36 @@ def page_admin_dashboard():
     tabs = st.tabs(["Dashboard", "Students Data", "Courses Data", "Logout"])
 
     # ---------------- Dashboard Metrics ----------------
-    with tabs[0]:
-        st.subheader("Statistics Overview")
-        total_students = c.execute("SELECT COUNT(*) FROM students").fetchone()[0]
-        total_courses = c.execute("SELECT COUNT(*) FROM courses").fetchone()[0]
-        most_viewed_course = c.execute("SELECT title, views FROM courses ORDER BY views DESC LIMIT 1").fetchone()
-        most_viewed_course_text = f"{most_viewed_course[0]} ({most_viewed_course[1]} views)" if most_viewed_course else "N/A"
+    def page_admin_dashboard():
+    st.session_state["page"] = "admin_dashboard"
+    st.title("Admin Dashboard")
 
-        cols = st.columns(3)
-        cols[0].metric("Total Students", total_students)
-        cols[1].metric("Total Courses", total_courses)
-        cols[2].metric("Most Viewed Course", most_viewed_course_text)
+    # Cards / Stats
+    total_courses = c.execute("SELECT COUNT(*) FROM courses").fetchone()[0]
+    total_modules = c.execute("SELECT COUNT(*) FROM modules").fetchone()[0]
+    total_students = c.execute("SELECT COUNT(*) FROM students").fetchone()[0]
 
+    cols = st.columns(3)
+    cols[0].markdown(f"""
+<div class="card">
+<div class="card-title">{total_courses}</div>
+<div class="card-subtitle">Courses</div>
+</div>
+    """, unsafe_allow_html=True)
+    cols[1].markdown(f"""
+<div class="card">
+<div class="card-title">{total_modules}</div>
+<div class="card-subtitle">Modules</div>
+</div>
+    """, unsafe_allow_html=True)
+    cols[2].markdown(f"""
+<div class="card">
+<div class="card-title">{total_students}</div>
+<div class="card-subtitle">Students</div>
+</div>
+    """, unsafe_allow_html=True)
+
+    st.markdown("---")
     # ---------------- Students Data ----------------
     with tabs[1]:
         st.subheader("Students Data")
