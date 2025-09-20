@@ -461,5 +461,3 @@ elif st.session_state["page"] == "student_dashboard":
     page_student_dashboard()
 elif st.session_state["page"] == "admin_dashboard":
     page_admin_dashboard()
-elif st.session_state["page"] == "edit_course":
-    st.write("Course edit page (coming soon).")
