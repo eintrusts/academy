@@ -34,7 +34,8 @@ c.execute('''CREATE TABLE IF NOT EXISTS modules (
 )''')
 
 # Students table
-c.execute('''CREATE TABLE IF NOT EXISTS students (
+c.execute('''
+CREATE TABLE IF NOT EXISTS students (
    student_id INTEGER PRIMARY KEY AUTOINCREMENT,
    full_name TEXT,
    email TEXT UNIQUE,
@@ -42,9 +43,10 @@ c.execute('''CREATE TABLE IF NOT EXISTS students (
    gender TEXT,
    profession TEXT,
    institution TEXT,
-   first_enrollment TEXT,
-   last_login TEXT
-)''')
+   first_enrollment TEXT DEFAULT CURRENT_TIMESTAMP,
+   last_login TEXT DEFAULT CURRENT_TIMESTAMP
+)
+''')
 
 # Student-Courses relation
 c.execute('''CREATE TABLE IF NOT EXISTS student_courses (
@@ -83,8 +85,11 @@ def get_modules(course_id):
 def add_student(full_name, email, password, gender, profession, institution):
     try:
         now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        c.execute("INSERT INTO students (full_name,email,password,gender,profession,institution,first_enrollment,last_login) VALUES (?,?,?,?,?,?,?,?)",
-                  (full_name, email, password, gender, profession, institution, now, now))
+        c.execute(
+            "INSERT INTO students (full_name,email,password,gender,profession,institution,first_enrollment,last_login) "
+            "VALUES (?,?,?,?,?,?,?,?)",
+            (full_name, email, password, gender, profession, institution, now, now)
+        )
         conn.commit()
         return True
     except sqlite3.IntegrityError:
@@ -231,6 +236,13 @@ def page_home():
     with main_tabs[2]:
         page_admin()
 
+    st.markdown("""
+<div style="position: relative; bottom: 0; width: 100%; text-align: center; padding: 10px; color: #888888; margin-top: 40px;">
+&copy; 2025 EinTrust. 
+All rights reserved.
+</div>
+    """, unsafe_allow_html=True)
+
 def page_signup():
     st.header("Create Profile")
     with st.form("signup_form"):
@@ -299,7 +311,6 @@ def page_admin():
 
 def page_admin_dashboard():
     st.header("Admin Dashboard")
-
     tabs = st.tabs(["Dashboard", "Students Data", "Courses Data", "Logout"])
 
     # Dashboard
@@ -318,9 +329,7 @@ def page_admin_dashboard():
         st.subheader("Students Data")
         students = c.execute("SELECT * FROM students ORDER BY student_id DESC").fetchall()
         if students:
-            df = pd.DataFrame(students, columns=[
-                "ID", "Full Name", "Email", "Password", "Gender", "Profession", "Institution", "First Enrollment", "Last Login"
-            ])
+            df = pd.DataFrame(students, columns=["ID","Name","Email","Password","Gender","Profession","Institution","First Enrollment","Last Login"])
             st.dataframe(df)
         else:
             st.info("No students found.")
@@ -410,11 +419,11 @@ def page_admin_dashboard():
                             st.success(f"Module '{title}' updated successfully!")
                     if st.button("Delete Module"):
                         delete_module(module_data[0])
-                        st.success(f"Module '{module_data[2]}' deleted successfully!")
+                        st.success(f"Module '{title}' deleted successfully!")
                 else:
                     st.info("No modules found for this course.")
             else:
-                st.info("No courses found.")
+                st.info("No courses found to update modules.")
 
     # Logout
     with tabs[3]:
@@ -424,7 +433,7 @@ def page_admin_dashboard():
             st.rerun()
 
 # ---------------------------
-# Main App
+# Routing
 # ---------------------------
 if "page" not in st.session_state:
     st.session_state["page"] = "home"
