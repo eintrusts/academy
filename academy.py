@@ -3,6 +3,8 @@ import sqlite3
 import re
 import pandas as pd
 from datetime import datetime
+from PIL import Image, ImageDraw, ImageFont
+import io
 
 # ---------------------------
 # DB Setup
@@ -52,7 +54,7 @@ c.execute('''CREATE TABLE IF NOT EXISTS student_courses (
    student_id INTEGER,
    course_id INTEGER,
    completed INTEGER DEFAULT 0,
-   time_spent INTEGER DEFAULT 0,
+   time_spent REAL DEFAULT 0,
    FOREIGN KEY(student_id) REFERENCES students(student_id),
    FOREIGN KEY(course_id) REFERENCES courses(course_id)
 )''')
@@ -136,10 +138,26 @@ def delete_module(module_id):
     c.execute("DELETE FROM modules WHERE module_id=?", (module_id,))
     conn.commit()
 
-def update_student_profile(student_id, full_name, gender, profession, institution):
-    c.execute("UPDATE students SET full_name=?, gender=?, profession=?, institution=? WHERE student_id=?",
-              (full_name, gender, profession, institution, student_id))
-    conn.commit()
+# Certificate generation
+def generate_certificate(student_name, course_title):
+    width, height = 1200, 850
+    certificate = Image.new('RGB', (width, height), color='white')
+    draw = ImageDraw.Draw(certificate)
+    title_font = ImageFont.truetype("arialbd.ttf", 60)
+    subtitle_font = ImageFont.truetype("arial.ttf", 40)
+    body_font = ImageFont.truetype("arial.ttf", 30)
+    draw.rectangle([(20,20),(width-20,height-20)], outline="black", width=6)
+    draw.text((width/2, 150), "EinTrust Academy", font=title_font, fill="darkgreen", anchor="mm")
+    draw.text((width/2, 300), "Certificate of Completion", font=subtitle_font, fill="black", anchor="mm")
+    draw.text((width/2, 450), student_name, font=body_font, fill="blue", anchor="mm")
+    draw.text((width/2, 550), f"has successfully completed the course:", font=body_font, fill="black", anchor="mm")
+    draw.text((width/2, 600), f"{course_title}", font=body_font, fill="red", anchor="mm")
+    completion_date = datetime.now().strftime("%d %B %Y")
+    draw.text((width/2, 700), f"Date: {completion_date}", font=body_font, fill="black", anchor="mm")
+    buf = io.BytesIO()
+    certificate.save(buf, format="PDF")
+    buf.seek(0)
+    return buf
 
 # ---------------------------
 # Page Config + CSS
@@ -177,6 +195,20 @@ body {background-color: #0d0f12; color: #e0e0e0; font-family: 'Times New Roman',
 """, unsafe_allow_html=True)
 
 # ---------------------------
+# Sample Data for Testing
+# ---------------------------
+def add_sample_courses():
+    if not get_courses():
+        course1 = add_course("Basics of Sustainability", "Introduction to ESG & Climate", "Learn the fundamentals of sustainability, ESG frameworks, and climate action.", 0)
+        course2 = add_course("Climate Change & Action", "Global Warming Explained", "Understand climate change, its impacts, and mitigation strategies.", 0)
+        add_module(course1, "What is Sustainability?", "Introduction to Sustainability", "Video", None, "https://www.youtube.com/watch?v=example1")
+        add_module(course1, "ESG Overview", "Learn ESG frameworks and compliance", "PDF", None, None)
+        add_module(course2, "Climate Science Basics", "Understanding climate change", "Video", None, "https://www.youtube.com/watch?v=example2")
+        add_module(course2, "Mitigation & Adaptation", "How we can act", "PDF", None, None)
+
+add_sample_courses()
+
+# ---------------------------
 # Display Courses
 # ---------------------------
 def display_courses(courses, enroll=False, student_id=None, show_modules=False, editable=False):
@@ -198,6 +230,11 @@ def display_courses(courses, enroll=False, student_id=None, show_modules=False, 
                 if st.button("Enroll", key=f"enroll_{course[0]}_{idx}"):
                     enroll_student_in_course(student_id, course[0])
                     st.success(f"Enrolled in {course[1]}!")
+            if editable:
+                if st.button("Edit Course", key=f"edit_{course[0]}_{idx}"):
+                    st.session_state["edit_course"] = course
+                    st.session_state["page"] = "edit_course"
+                    st.experimental_rerun()
             if show_modules:
                 modules = get_modules(course[0])
                 if modules:
@@ -276,14 +313,11 @@ def page_login():
         student = authenticate_student(email, password)
         if student:
             st.session_state["student"] = student
-            st.session_state["page"] = "student_dashboard"
-            st.experimental_rerun()
+            st.experimental_rerun()  # Redirect to student dashboard
         else:
             st.error("Invalid credentials.")
 
-# ---------------------------
-# Student Dashboard
-# ---------------------------
+# --- Student Dashboard with sub-tabs ---
 def page_student_dashboard():
     render_logo_name()
     st.header("Student Dashboard")
@@ -347,12 +381,8 @@ def page_student_dashboard():
                 st.experimental_rerun()
     else:
         st.warning("Please login first.")
-       
-    render_footer()
 
-# ---------------------------
-# Admin Pages
-# ---------------------------
+# --- Admin ---
 def page_admin():
     st.header("Admin Login")
     admin_pass = st.text_input("Enter Admin Password", type="password", key="admin_pass")
@@ -363,6 +393,7 @@ def page_admin():
         else:
             st.error("Wrong admin password.")
 
+# --- Admin Dashboard ---
 def page_admin_dashboard():
     render_logo_name()
     st.header("Admin Dashboard")
@@ -379,99 +410,26 @@ def page_admin_dashboard():
 
     with tabs[1]:
         st.subheader("Students Data")
-        students = c.execute("SELECT * FROM students ORDER BY student_id DESC").fetchall()
-        if students:
-            df = pd.DataFrame(students, columns=["ID","Name","Email","Password","Gender","Profession","Institution","First Enrollment","Last Login"])
-            st.dataframe(df)
-        else:
-            st.info("No students found.")
+        students = c.execute("SELECT * FROM students").fetchall()
+        df = pd.DataFrame(students, columns=["ID","Name","Email","Password","Gender","Profession","Institution","First Enrollment","Last Login"])
+        st.dataframe(df)
 
     with tabs[2]:
-        course_subtabs = st.tabs(["Add Course", "Add Module", "Update Course", "Update Module"])
-        # --- Add Course
-        with course_subtabs[0]:
-            st.subheader("Add Course")
-            with st.form("add_course_form"):
-                title = st.text_input("Course Title", key="add_course_title")
-                subtitle = st.text_input("Subtitle", key="add_course_subtitle")
-                desc = st.text_area("Description", key="add_course_desc")
-                price = st.number_input("Price", 0.0, 100000.0, key="add_course_price")
-                if st.form_submit_button("Add Course"):
-                    add_course(title, subtitle, desc, price)
-                    st.success("Course added successfully!")
-
-        # --- Add Module
-        with course_subtabs[1]:
-            st.subheader("Add Module")
-            courses = get_courses()
-            if courses:
-                course_options = {c[1]: c[0] for c in courses}
-                selected_course = st.selectbox("Select Course", options=list(course_options.keys()), key="add_module_course")
-                title = st.text_input("Module Title", key="add_module_title")
-                desc = st.text_area("Description", key="add_module_desc")
-                mtype = st.selectbox("Module Type", ["Video","PDF","Link","Other"], key="add_module_type")
-                file = st.file_uploader("Upload File", key="add_module_file")
-                link = st.text_input("Link (optional)", key="add_module_link")
-                if st.button("Add Module", key="add_module_btn"):
-                    add_module(course_options[selected_course], title, desc, mtype, convert_file_to_bytes(file), link)
-                    st.success("Module added successfully!")
-
-        # --- Update/Delete Course
-        with course_subtabs[2]:
-            st.subheader("Update / Delete Course")
-            courses = get_courses()
-            if courses:
-                course_options = {c[1]: c[0] for c in courses}
-                selected_course = st.selectbox("Select Course", list(course_options.keys()), key="upd_course_select")
-                course_data = c.execute("SELECT * FROM courses WHERE course_id=?", (course_options[selected_course],)).fetchone()
-                title = st.text_input("Course Title", course_data[1], key="upd_course_title")
-                subtitle = st.text_input("Subtitle", course_data[2], key="upd_course_subtitle")
-                desc = st.text_area("Description", course_data[3], key="upd_course_desc")
-                price = st.number_input("Price", course_data[4], key="upd_course_price")
-                if st.button("Update Course", key="upd_course_btn"):
-                    update_course(course_options[selected_course], title, subtitle, desc, price)
-                    st.success("Course updated!")
-                if st.button("Delete Course", key="del_course_btn"):
-                    delete_course(course_options[selected_course])
-                    st.success("Course deleted!")
-
-        # --- Update/Delete Module
-        with course_subtabs[3]:
-            st.subheader("Update / Delete Module")
-            modules = c.execute("SELECT module_id, title FROM modules ORDER BY module_id DESC").fetchall()
-            if modules:
-                mod_options = {m[1]: m[0] for m in modules}
-                selected_mod = st.selectbox("Select Module", list(mod_options.keys()), key="upd_module_select")
-                mod_data = c.execute("SELECT * FROM modules WHERE module_id=?", (mod_options[selected_mod],)).fetchone()
-                title = st.text_input("Module Title", mod_data[2], key="upd_module_title")
-                desc = st.text_area("Description", mod_data[3], key="upd_module_desc")
-                mtype = st.selectbox("Module Type", ["Video","PDF","Link","Other"], index=["Video","PDF","Link","Other"].index(mod_data[4]), key="upd_module_type")
-                file = st.file_uploader("Upload New File (optional)", key="upd_module_file")
-                link = st.text_input("Link", mod_data[6], key="upd_module_link")
-                if st.button("Update Module", key="upd_module_btn"):
-                    update_module(mod_options[selected_mod], title, desc, mtype, convert_file_to_bytes(file) if file else mod_data[5], link)
-                    st.success("Module updated!")
-                if st.button("Delete Module", key="del_module_btn"):
-                    delete_module(mod_options[selected_mod])
-                    st.success("Module deleted!")
+        st.subheader("Courses Data")
+        courses = get_courses()
+        display_courses(courses, show_modules=True, editable=True)
 
     with tabs[3]:
         if st.button("Logout Admin"):
-            st.session_state["page"] = "home"
+            del st.session_state["page"]
             st.experimental_rerun()
 
-    render_footer()
-
 # ---------------------------
-# Main
+# Main Execution
 # ---------------------------
-if "page" not in st.session_state:
-    st.session_state["page"] = "home"
-
-page = st.session_state["page"]
-if page == "home":
-    page_home()
-elif page == "student_dashboard":
+if "student" in st.session_state:
     page_student_dashboard()
-elif page == "admin_dashboard":
+elif st.session_state.get("page") == "admin_dashboard":
     page_admin_dashboard()
+else:
+    page_home()
