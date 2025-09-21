@@ -2,6 +2,7 @@ import streamlit as st
 import sqlite3
 import re
 import pandas as pd
+from datetime import datetime
 
 # ---------------------------
 # DB Setup
@@ -32,7 +33,7 @@ c.execute('''CREATE TABLE IF NOT EXISTS modules (
    FOREIGN KEY(course_id) REFERENCES courses(course_id)
 )''')
 
-# Students table (kept all columns as in reference)
+# Students table
 c.execute('''CREATE TABLE IF NOT EXISTS students (
    student_id INTEGER PRIMARY KEY AUTOINCREMENT,
    full_name TEXT,
@@ -81,10 +82,9 @@ def get_modules(course_id):
 
 def add_student(full_name, email, password, gender, profession, institution):
     try:
-        c.execute(
-            "INSERT INTO students (full_name,email,password,gender,profession,institution,first_enrollment,last_login) VALUES (?,?,?,?,?,?,datetime('now'),datetime('now'))",
-            (full_name, email, password, gender, profession, institution)
-        )
+        now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        c.execute("INSERT INTO students (full_name,email,password,gender,profession,institution,first_enrollment,last_login) VALUES (?,?,?,?,?,?,?,?)",
+                  (full_name, email, password, gender, profession, institution, now, now))
         conn.commit()
         return True
     except sqlite3.IntegrityError:
@@ -149,6 +149,16 @@ body {background-color: #0d0f12; color: #e0e0e0;}
 .stNumberInput > div > input {
    background-color: #1e1e1e; color: #f5f5f5; border: 1px solid #333333; border-radius: 6px;
 }
+.unique-btn button {
+   background-color: #4CAF50 !important;
+   color: white !important;
+   border-radius: 8px !important;
+   border: none !important;
+   padding: 12px 25px !important;
+   font-weight: bold !important;
+   width: 100%;
+}
+.unique-btn button:hover {background-color: #45a049 !important; color: #ffffff !important;}
 .course-card {background: #1c1c1c; border-radius: 12px; padding: 16px; margin: 12px; box-shadow: 0px 4px 10px rgba(0,0,0,0.6);}
 .course-title {font-size: 22px; font-weight: bold; color: #f0f0f0;}
 .course-subtitle {font-size: 16px; color: #b0b0b0;}
@@ -163,7 +173,7 @@ body {background-color: #0d0f12; color: #e0e0e0;}
 # ---------------------------
 # Display Courses
 # ---------------------------
-def display_courses(courses, enroll=False, student_id=None, show_modules=False):
+def display_courses(courses, enroll=False, student_id=None, show_modules=False, editable=False):
     if not courses:
         st.info("No courses available.")
         return
@@ -182,6 +192,11 @@ def display_courses(courses, enroll=False, student_id=None, show_modules=False):
                 if st.button("Enroll", key=f"enroll_{course[0]}_{idx}", use_container_width=True):
                     enroll_student_in_course(student_id, course[0])
                     st.success(f"Enrolled in {course[1]}!")
+            if editable:
+                if st.button("Edit Course", key=f"edit_{course[0]}_{idx}", use_container_width=True):
+                    st.session_state["edit_course"] = course
+                    st.session_state["page"] = "edit_course"
+                    st.rerun()
             if show_modules:
                 modules = get_modules(course[0])
                 if modules:
@@ -193,20 +208,18 @@ def display_courses(courses, enroll=False, student_id=None, show_modules=False):
 # Pages
 # ---------------------------
 def page_home():
-    st.markdown("""
-<div style="display: flex; align-items: center; margin-bottom: 20px;">
-<h1 style="margin:0; color:#ffffff;">EinTrust Academy</h1>
-</div>
-    """, unsafe_allow_html=True)
+    st.markdown("<h1 style='color:#ffffff;'>EinTrust Academy</h1>", unsafe_allow_html=True)
 
     main_tabs = st.tabs(["Courses", "Student", "Admin"])
 
+    # Courses Tab
     with main_tabs[0]:
         st.subheader("Courses")
         student_id = st.session_state.get("student", [None])[0] if "student" in st.session_state else None
         courses = get_courses()
         display_courses(courses, enroll=True, student_id=student_id)
 
+    # Student Tab
     with main_tabs[1]:
         student_tabs = st.tabs(["Signup", "Login"])
         with student_tabs[0]:
@@ -214,21 +227,16 @@ def page_home():
         with student_tabs[1]:
             page_login()
 
+    # Admin Tab
     with main_tabs[2]:
         page_admin()
-
-    st.markdown("""
-<div style="text-align: center; padding: 10px; color: #888888; margin-top: 40px;">
-&copy; 2025 EinTrust. All rights reserved.
-</div>
-    """, unsafe_allow_html=True)
 
 def page_signup():
     st.header("Create Profile")
     with st.form("signup_form"):
         full_name = st.text_input("Full Name")
         email = st.text_input("Email ID")
-        password = st.text_input("Password", type="password")
+        password = st.text_input("Password", type="password", help="Min 8 chars, 1 uppercase, 1 number, 1 special char")
         gender = st.selectbox("Gender", ["Male","Female","Other"])
         profession = st.text_input("Profession")
         institution = st.text_input("Institution")
@@ -241,9 +249,11 @@ def page_signup():
             else:
                 success = add_student(full_name, email, password, gender, profession, institution)
                 if success:
-                    st.success("Profile created successfully! Please login.")
+                    st.success("Profile created successfully! Redirecting to login...")
+                    st.session_state["page"] = "home"
+                    st.rerun()
                 else:
-                    st.error("Email already registered.")
+                    st.error("Email already registered. Please login.")
 
 def page_login():
     st.header("Student Login")
@@ -308,7 +318,9 @@ def page_admin_dashboard():
         st.subheader("Students Data")
         students = c.execute("SELECT * FROM students ORDER BY student_id DESC").fetchall()
         if students:
-            df = pd.DataFrame(students, columns=["ID","Name","Email","Password","Gender","Profession","Institution","First Enrollment","Last Login"])
+            df = pd.DataFrame(students, columns=[
+                "ID", "Full Name", "Email", "Password", "Gender", "Profession", "Institution", "First Enrollment", "Last Login"
+            ])
             st.dataframe(df)
         else:
             st.info("No students found.")
@@ -406,12 +418,13 @@ def page_admin_dashboard():
 
     # Logout
     with tabs[3]:
-        if st.button("Logout Admin"):
+        if st.button("Logout"):
+            st.session_state.clear()
             st.session_state["page"] = "home"
             st.rerun()
 
 # ---------------------------
-# Router
+# Main App
 # ---------------------------
 if "page" not in st.session_state:
     st.session_state["page"] = "home"
