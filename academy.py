@@ -3,8 +3,6 @@ import sqlite3
 import re
 import pandas as pd
 from datetime import datetime
-from PIL import Image, ImageDraw, ImageFont
-import io
 
 # ---------------------------
 # DB Setup
@@ -48,7 +46,7 @@ c.execute('''CREATE TABLE IF NOT EXISTS students (
    last_login TEXT
 )''')
 
-# Student-Courses relation
+# Student-Courses relation table
 c.execute('''CREATE TABLE IF NOT EXISTS student_courses (
    id INTEGER PRIMARY KEY AUTOINCREMENT,
    student_id INTEGER,
@@ -104,10 +102,16 @@ def enroll_student_in_course(student_id, course_id):
 
 def get_student_courses(student_id):
     return c.execute(
-        '''SELECT courses.course_id, courses.title, courses.subtitle, courses.description, courses.price, student_courses.completed, student_courses.time_spent
+        '''SELECT courses.course_id, courses.title, courses.subtitle, courses.description, courses.price,
+                  student_courses.completed, student_courses.time_spent
            FROM courses JOIN student_courses
            ON courses.course_id = student_courses.course_id
            WHERE student_courses.student_id=?''', (student_id,)).fetchall()
+
+def update_student_profile(student_id, full_name, gender, profession, institution):
+    c.execute("UPDATE students SET full_name=?, gender=?, profession=?, institution=? WHERE student_id=?",
+              (full_name, gender, profession, institution, student_id))
+    conn.commit()
 
 def add_course(title, subtitle, description, price):
     c.execute("INSERT INTO courses (title, subtitle, description, price) VALUES (?,?,?,?)", (title, subtitle, description, price))
@@ -137,27 +141,6 @@ def update_module(module_id, title, description, module_type, file, link):
 def delete_module(module_id):
     c.execute("DELETE FROM modules WHERE module_id=?", (module_id,))
     conn.commit()
-
-# Certificate generation
-def generate_certificate(student_name, course_title):
-    width, height = 1200, 850
-    certificate = Image.new('RGB', (width, height), color='white')
-    draw = ImageDraw.Draw(certificate)
-    title_font = ImageFont.truetype("arialbd.ttf", 60)
-    subtitle_font = ImageFont.truetype("arial.ttf", 40)
-    body_font = ImageFont.truetype("arial.ttf", 30)
-    draw.rectangle([(20,20),(width-20,height-20)], outline="black", width=6)
-    draw.text((width/2, 150), "EinTrust Academy", font=title_font, fill="darkgreen", anchor="mm")
-    draw.text((width/2, 300), "Certificate of Completion", font=subtitle_font, fill="black", anchor="mm")
-    draw.text((width/2, 450), student_name, font=body_font, fill="blue", anchor="mm")
-    draw.text((width/2, 550), f"has successfully completed the course:", font=body_font, fill="black", anchor="mm")
-    draw.text((width/2, 600), f"{course_title}", font=body_font, fill="red", anchor="mm")
-    completion_date = datetime.now().strftime("%d %B %Y")
-    draw.text((width/2, 700), f"Date: {completion_date}", font=body_font, fill="black", anchor="mm")
-    buf = io.BytesIO()
-    certificate.save(buf, format="PDF")
-    buf.seek(0)
-    return buf
 
 # ---------------------------
 # Page Config + CSS
@@ -193,20 +176,6 @@ body {background-color: #0d0f12; color: #e0e0e0; font-family: 'Times New Roman',
 .card-subtitle {font-size:16px; color:#bbbbbb;}
 </style>
 """, unsafe_allow_html=True)
-
-# ---------------------------
-# Sample Data for Testing
-# ---------------------------
-def add_sample_courses():
-    if not get_courses():
-        course1 = add_course("Basics of Sustainability", "Introduction to ESG & Climate", "Learn the fundamentals of sustainability, ESG frameworks, and climate action.", 0)
-        course2 = add_course("Climate Change & Action", "Global Warming Explained", "Understand climate change, its impacts, and mitigation strategies.", 0)
-        add_module(course1, "What is Sustainability?", "Introduction to Sustainability", "Video", None, "https://www.youtube.com/watch?v=example1")
-        add_module(course1, "ESG Overview", "Learn ESG frameworks and compliance", "PDF", None, None)
-        add_module(course2, "Climate Science Basics", "Understanding climate change", "Video", None, "https://www.youtube.com/watch?v=example2")
-        add_module(course2, "Mitigation & Adaptation", "How we can act", "PDF", None, None)
-
-add_sample_courses()
 
 # ---------------------------
 # Display Courses
@@ -248,7 +217,6 @@ def display_courses(courses, enroll=False, student_id=None, show_modules=False, 
 def render_logo_name():
     st.markdown("""
 <div style="display: flex; align-items: center; margin-bottom: 20px;">
-<img src="https://github.com/eintrusts/CAP/blob/main/EinTrust%20%20(2).png?raw=true" width="60" style="margin-right: 15px;">
 <h1 style="margin:0; font-family:'Times New Roman', serif; color:#ffffff;">EinTrust Academy</h1>
 </div>
 """, unsafe_allow_html=True)
@@ -313,124 +281,72 @@ def page_login():
         student = authenticate_student(email, password)
         if student:
             st.session_state["student"] = student
-            st.experimental_rerun()  # Redirect to student dashboard
+            st.session_state["page"] = "student_dashboard"
         else:
             st.error("Invalid credentials.")
 
-# --- Student Dashboard with sub-tabs ---
+# --- Student Dashboard ---
 def page_student_dashboard():
+    render_logo_name()
     student = st.session_state.get("student")
     if not student:
-        st.error("Please login first")
+        st.warning("Please login first.")
         return
 
-    st.title(f"Welcome {student[1]}")
-
-    tabs = st.tabs(["Courses", "My Learning", "My Achievements", "Profile", "Logout"])
+    st.header(f"Student Dashboard: {student[1]}")
+    sub_tabs = st.tabs(["Courses", "My Learning", "My Achievements", "Profile", "Logout"])
 
     # Courses Tab
-    with tabs[0]:
+    with sub_tabs[0]:
+        st.subheader("All Courses")
         courses = get_courses()
-        for c in courses:
-            st.markdown(f"### {c[1]} - {c[2]}")
-            st.write(c[3])
-            st.write(f"Price: {c[4]}")
-            if st.button(f"Enroll in {c[1]}", key=f"enroll_{c[0]}"):
-                conn = sqlite3.connect("academy.db")
-                cur = conn.cursor()
-                cur.execute("INSERT OR IGNORE INTO student_courses (student_id, course_id) VALUES (?, ?)", (student[0], c[0]))
-                conn.commit()
-                conn.close()
-                st.success(f"Enrolled in {c[1]}")
+        display_courses(courses, enroll=True, student_id=student[0])
 
     # My Learning Tab
-    with tabs[1]:
+    with sub_tabs[1]:
+        st.subheader("My Learning")
         enrolled_courses = get_student_courses(student[0])
         if enrolled_courses:
-            for ec in enrolled_courses:
-                st.markdown(f"### {ec[1]} - {ec[2]}")
-                st.write(ec[3])
-                st.write(f"Status: {'Completed' if ec[5] else 'In Progress'}")
-                st.write(f"Time Spent: {ec[6]} seconds")
-                if not ec[5]:
-                    if st.button(f"Mark {ec[1]} as Completed", key=f"complete_{ec[0]}"):
-                        conn = sqlite3.connect("academy.db")
-                        cur = conn.cursor()
-                        cur.execute("UPDATE student_courses SET completed=1 WHERE student_id=? AND course_id=?", (student[0], ec[0]))
-                        conn.commit()
-                        conn.close()
-                        st.success(f"{ec[1]} marked as completed")
-                        st.rerun()
+            for course in enrolled_courses:
+                st.markdown(f"**{course[1]}** — Completed: {'Yes' if course[5] else 'No'} — Time Spent: {course[6]} hrs")
+                modules = get_modules(course[0])
+                if modules:
+                    for m in modules:
+                        st.write(f"- {m[2]} ({m[4]})")
         else:
-            st.info("You are not enrolled in any courses yet.")
+            st.info("No enrolled courses.")
 
     # My Achievements Tab
-    with tabs[2]:
-        conn = sqlite3.connect("academy.db")
-        cur = conn.cursor()
-        completed_courses = cur.execute(
-            '''SELECT courses.course_id, courses.title, courses.subtitle, student_courses.time_spent
-               FROM courses JOIN student_courses ON courses.course_id = student_courses.course_id
-               WHERE student_courses.student_id=? AND student_courses.completed=1''',
-            (student[0],)
-        ).fetchall()
-        conn.close()
-
-        if completed_courses:
-            st.subheader("Your Achievements")
-            for cc in completed_courses:
-                st.markdown(f"### {cc[1]} - {cc[2]}")
-                st.write(f"Time Spent: {cc[3]} seconds")
-
-                cert_key = f"cert_{student[0]}_{cc[0]}"
-                if st.button(f"Download Certificate for {cc[1]}", key=cert_key):
-                    pdf = FPDF()
-                    pdf.add_page()
-                    pdf.set_font("Arial", 'B', 16)
-                    pdf.cell(200, 20, "Certificate of Completion", ln=True, align="C")
-                    pdf.ln(20)
-                    pdf.set_font("Arial", '', 12)
-                    pdf.multi_cell(0, 10, f"This is to certify that {student[1]} has successfully completed the course '{cc[1]}'.")
-                    pdf.ln(10)
-                    pdf.cell(0, 10, f"Time Spent: {cc[3]} seconds", ln=True)
-                    pdf.ln(20)
-                    pdf.cell(0, 10, "EinTrust Academy", ln=True, align="R")
-
-                    cert_file = f"certificate_{student[0]}_{cc[0]}.pdf"
-                    pdf.output(cert_file)
-
-                    with open(cert_file, "rb") as f:
-                        st.download_button(
-                            label="Download Certificate",
-                            data=f,
-                            file_name=cert_file,
-                            mime="application/pdf"
-                        )
+    with sub_tabs[2]:
+        st.subheader("My Achievements")
+        enrolled_courses = get_student_courses(student[0])
+        achievements = [c for c in enrolled_courses if c[5]]  # completed
+        if achievements:
+            for course in achievements:
+                st.markdown(f"- {course[1]} — Certificate available")
+                st.download_button("Download Certificate", data=f"Certificate for {course[1]}", file_name=f"{course[1]}_certificate.txt")
         else:
-            st.info("No achievements yet. Complete courses to earn certificates.")
+            st.info("No achievements yet.")
 
     # Profile Tab
-    with tabs[3]:
+    with sub_tabs[3]:
         st.subheader("Edit Profile")
-        new_name = st.text_input("Name", value=student[1])
-        new_email = st.text_input("Email", value=student[2])
-        new_password = st.text_input("Password", type="password", value=student[3])
-        if st.button("Update Profile"):
-            conn = sqlite3.connect("academy.db")
-            cur = conn.cursor()
-            cur.execute("UPDATE students SET name=?, email=?, password=? WHERE student_id=?", (new_name, new_email, new_password, student[0]))
-            conn.commit()
-            conn.close()
-            st.success("Profile updated successfully")
-            st.session_state["student"] = (student[0], new_name, new_email, new_password)
-            st.rerun()
+        with st.form("profile_form"):
+            full_name = st.text_input("Full Name", student[1])
+            gender = st.selectbox("Gender", ["Male","Female","Other"], index=["Male","Female","Other"].index(student[4]))
+            profession = st.text_input("Profession", student[5])
+            institution = st.text_input("Institution", student[6])
+            if st.form_submit_button("Update Profile"):
+                update_student_profile(student[0], full_name, gender, profession, institution)
+                st.session_state["student"] = authenticate_student(student[2], student[3])
+                st.success("Profile updated successfully!")
 
     # Logout Tab
-    with tabs[4]:
+    with sub_tabs[4]:
         if st.button("Logout"):
-            st.session_state.pop("student", None)
+            if "student" in st.session_state:
+                del st.session_state["student"]
             st.session_state["page"] = "home"
-            st.rerun()
 
 # --- Admin ---
 def page_admin():
@@ -439,7 +355,6 @@ def page_admin():
     if st.button("Login as Admin", key="admin_btn"):
         if admin_pass == "eintrust2025":
             st.session_state["page"] = "admin_dashboard"
-            st.experimental_rerun()
         else:
             st.error("Wrong admin password.")
 
@@ -460,26 +375,88 @@ def page_admin_dashboard():
 
     with tabs[1]:
         st.subheader("Students Data")
-        students = c.execute("SELECT * FROM students").fetchall()
-        df = pd.DataFrame(students, columns=["ID","Name","Email","Password","Gender","Profession","Institution","First Enrollment","Last Login"])
-        st.dataframe(df)
+        students = c.execute("SELECT * FROM students ORDER BY student_id DESC").fetchall()
+        if students:
+            df = pd.DataFrame(students, columns=["ID","Name","Email","Password","Gender","Profession","Institution","First Enrollment","Last Login"])
+            st.dataframe(df)
+        else:
+            st.info("No students found.")
 
     with tabs[2]:
-        st.subheader("Courses Data")
-        courses = get_courses()
-        display_courses(courses, show_modules=True, editable=True)
+        course_subtabs = st.tabs(["Add Course", "Add Module", "Update Course", "Update Module"])
+        with course_subtabs[0]:
+            st.subheader("Add Course")
+            with st.form("add_course_form"):
+                title = st.text_input("Course Title", key="add_course_title")
+                subtitle = st.text_input("Subtitle", key="add_course_subtitle")
+                desc = st.text_area("Description", key="add_course_desc")
+                price = st.number_input("Price", 0.0, 100000.0, key="add_course_price")
+                if st.form_submit_button("Add Course"):
+                    add_course(title, subtitle, desc, price)
+                    st.success("Course added successfully!")
+
+        with course_subtabs[1]:
+            st.subheader("Add Module")
+            courses = get_courses()
+            if courses:
+                course_options = {c[1]: c[0] for c in courses}
+                selected_course = st.selectbox("Select Course", options=list(course_options.keys()), key="add_module_course")
+                title = st.text_input("Module Title", key="add_module_title")
+                desc = st.text_area("Description", key="add_module_desc")
+                mtype = st.selectbox("Module Type", ["Video","PDF","Link","Other"], key="add_module_type")
+                file = st.file_uploader("Upload File", key="add_module_file")
+                link = st.text_input("Link (optional)", key="add_module_link")
+                if st.button("Add Module", key="add_module_btn"):
+                    add_module(course_options[selected_course], title, desc, mtype, convert_file_to_bytes(file), link)
+                    st.success("Module added successfully!")
+
+        with course_subtabs[2]:
+            st.subheader("Update Course")
+            courses = get_courses()
+            if courses:
+                course_options = {c[1]: c[0] for c in courses}
+                selected_course = st.selectbox("Select Course", options=list(course_options.keys()), key="update_course_sel")
+                course = next(c for c in courses if c[0]==course_options[selected_course])
+                with st.form("update_course_form"):
+                    title = st.text_input("Title", course[1])
+                    subtitle = st.text_input("Subtitle", course[2])
+                    desc = st.text_area("Description", course[3])
+                    price = st.number_input("Price", course[4])
+                    if st.form_submit_button("Update Course"):
+                        update_course(course[0], title, subtitle, desc, price)
+                        st.success("Course updated successfully!")
+
+        with course_subtabs[3]:
+            st.subheader("Update Module")
+            modules = c.execute("SELECT module_id,title FROM modules").fetchall()
+            if modules:
+                mod_options = {m[1]: m[0] for m in modules}
+                selected_mod = st.selectbox("Select Module", options=list(mod_options.keys()))
+                mod = c.execute("SELECT * FROM modules WHERE module_id=?", (mod_options[selected_mod],)).fetchone()
+                with st.form("update_module_form"):
+                    title = st.text_input("Title", mod[2])
+                    desc = st.text_area("Description", mod[3])
+                    mtype = st.selectbox("Module Type", ["Video","PDF","Link","Other"], index=["Video","PDF","Link","Other"].index(mod[4]))
+                    file = st.file_uploader("Upload File", key="upd_module_file")
+                    link = st.text_input("Link", mod[6])
+                    if st.form_submit_button("Update Module"):
+                        update_module(mod[0], title, desc, mtype, convert_file_to_bytes(file), link)
+                        st.success("Module updated successfully!")
 
     with tabs[3]:
-        if st.button("Logout Admin"):
-            del st.session_state["page"]
-            st.experimental_rerun()
+        if st.button("Logout"):
+            if "page" in st.session_state:
+                st.session_state["page"] = "home"
 
 # ---------------------------
-# Main Execution
+# Page Navigation
 # ---------------------------
-if "student" in st.session_state:
-    page_student_dashboard()
-elif st.session_state.get("page") == "admin_dashboard":
-    page_admin_dashboard()
-else:
+if "page" not in st.session_state:
+    st.session_state["page"] = "home"
+
+if st.session_state["page"] == "home":
     page_home()
+elif st.session_state["page"] == "student_dashboard":
+    page_student_dashboard()
+elif st.session_state["page"] == "admin_dashboard":
+    page_admin_dashboard()
