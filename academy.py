@@ -84,8 +84,7 @@ def add_student(full_name, email, password, gender, profession, institution):
     try:
         now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         c.execute(
-            "INSERT INTO students (full_name,email,password,gender,profession,institution,first_enrollment,last_login) "
-            "VALUES (?,?,?,?,?,?,?,?)",
+            "INSERT INTO students (full_name,email,password,gender,profession,institution,first_enrollment,last_login) VALUES (?,?,?,?,?,?,?,?)",
             (full_name, email, password, gender, profession, institution, now, now)
         )
         conn.commit()
@@ -144,8 +143,8 @@ def delete_module(module_id):
 st.set_page_config(page_title="EinTrust Academy", layout="wide")
 st.markdown("""
 <style>
-body {background-color: #0d0f12; color: #e0e0e0; font-family: 'Times New Roman', Times, serif;}
-.stApp {background-color: #0d0f12; color: #e0e0e0; font-family: 'Times New Roman', Times, serif;}
+body {background-color: #0d0f12; color: #e0e0e0; font-family: 'Times New Roman', serif;}
+.stApp {background-color: #0d0f12; color: #e0e0e0; font-family: 'Times New Roman', serif;}
 .stTextInput > div > div > input,
 .stSelectbox > div > div > select,
 .stTextArea > div > textarea,
@@ -210,23 +209,14 @@ def display_courses(courses, enroll=False, student_id=None, show_modules=False, 
 # ---------------------------
 # Pages
 # ---------------------------
-def render_logo_name():
+def page_home():
     st.markdown("""
-<div style="display:flex;align-items:center;margin-bottom:20px;">
-<img src="https://github.com/eintrusts/CAP/blob/main/EinTrust%20%20(2).png?raw=true" width="60" style="margin-right:15px;">
-<h1 style="margin:0; font-family:'Times New Roman', Times, serif; color:#ffffff;">EinTrust Academy</h1>
+<div style="display: flex; align-items: center; margin-bottom: 20px;">
+<img src="https://github.com/eintrusts/CAP/blob/main/EinTrust%20%20(2).png?raw=true" width="60" style="margin-right: 15px;">
+<h1 style="margin:0; font-family: 'Times New Roman', serif; color:#ffffff;">EinTrust Academy</h1>
 </div>
     """, unsafe_allow_html=True)
 
-def render_footer():
-    st.markdown("""
-<div style="position: relative; bottom: 0; width: 100%; text-align: center; padding: 10px; color: #888888; margin-top: 40px;">
-&copy; 2025 EinTrust. All rights reserved.
-</div>
-""", unsafe_allow_html=True)
-
-def page_home():
-    render_logo_name()
     main_tabs = st.tabs(["Courses", "Student", "Admin"])
 
     # Courses Tab
@@ -248,7 +238,11 @@ def page_home():
     with main_tabs[2]:
         page_admin()
 
-    render_footer()
+    st.markdown("""
+<div style="position: relative; bottom: 0; width: 100%; text-align: center; padding: 10px; color: #888888; margin-top: 40px;">
+&copy; 2025 EinTrust. All rights reserved.
+</div>
+    """, unsafe_allow_html=True)
 
 def page_signup():
     st.header("Create Profile")
@@ -288,7 +282,6 @@ def page_login():
             st.error("Invalid credentials.")
 
 def page_student_dashboard():
-    render_logo_name()
     st.header("Student Dashboard")
     student = st.session_state.get("student")
     if student:
@@ -306,7 +299,6 @@ def page_student_dashboard():
             st.experimental_rerun()
     else:
         st.warning("Please login first.")
-    render_footer()
 
 def page_admin():
     st.header("Admin Login")
@@ -319,8 +311,13 @@ def page_admin():
             st.error("Wrong admin password.")
 
 def page_admin_dashboard():
-    render_logo_name()
     st.header("Admin Dashboard")
+    st.markdown("""
+<div style="display: flex; align-items: center; margin-bottom: 20px;">
+<img src="https://github.com/eintrusts/CAP/blob/main/EinTrust%20%20(2).png?raw=true" width="60" style="margin-right: 15px;">
+<h1 style="margin:0; font-family: 'Times New Roman', serif; color:#ffffff;">EinTrust Academy</h1>
+</div>
+    """, unsafe_allow_html=True)
 
     tabs = st.tabs(["Dashboard", "Students Data", "Courses Data", "Logout"])
 
@@ -347,92 +344,30 @@ def page_admin_dashboard():
 
     # Courses Data
     with tabs[2]:
-        course_subtabs = st.tabs(["Add Course", "Add Module", "Update Course", "Update Module"])
-
-        # Add Course
-        with course_subtabs[0]:
-            st.subheader("Add New Course")
-            with st.form("add_course_form"):
-                title = st.text_input("Title")
-                subtitle = st.text_input("Subtitle")
-                desc = st.text_area("Description")
-                price = st.number_input("Price (₹)", min_value=0.0, value=0.0, step=1.0)
-                submitted = st.form_submit_button("Add Course")
-                if submitted:
-                    add_course(title, subtitle, desc, price)
-                    st.success(f"Course '{title}' added successfully!")
-
-        # Add Module
-        with course_subtabs[1]:
-            st.subheader("Add New Module")
+        course_tabs = st.tabs(["Manage Courses", "Manage Modules"])
+        with course_tabs[0]:
+            st.subheader("Manage Courses")
             courses = get_courses()
-            if courses:
-                course_options = {f"{c[1]} (ID:{c[0]})": c[0] for c in courses}
-                with st.form("add_module_form"):
-                    selected_course = st.selectbox("Select Course", list(course_options.keys()))
-                    title = st.text_input("Module Title")
-                    desc = st.text_area("Module Description")
-                    module_type = st.selectbox("Module Type", ["Video","PDF","Quiz","Other"])
-                    uploaded_file = st.file_uploader("Upload File (optional)")
-                    link = st.text_input("Link (optional)")
-                    submitted = st.form_submit_button("Add Module")
-                    if submitted:
-                        add_module(course_options[selected_course], title, desc, module_type, convert_file_to_bytes(uploaded_file), link)
-                        st.success(f"Module '{title}' added successfully!")
-            else:
-                st.info("Add courses first to add modules.")
-
-        # Update Course
-        with course_subtabs[2]:
-            st.subheader("Update Existing Course")
-            courses = get_courses()
-            if courses:
-                course_options = {f"{c[1]} (ID:{c[0]})": c[0] for c in courses}
-                selected_course = st.selectbox("Select Course to Update", list(course_options.keys()))
-                course_data = c.execute("SELECT * FROM courses WHERE course_id=?", (course_options[selected_course],)).fetchone()
-                with st.form("update_course_form"):
-                    title = st.text_input("Title", value=course_data[1])
-                    subtitle = st.text_input("Subtitle", value=course_data[2])
-                    desc = st.text_area("Description", value=course_data[3])
-                    price = st.number_input("Price (₹)", min_value=0.0, value=course_data[4], step=1.0)
-                    submitted = st.form_submit_button("Update Course")
-                    if submitted:
-                        update_course(course_data[0], title, subtitle, desc, price)
-                        st.success("Course updated successfully!")
-            else:
-                st.info("No courses available.")
-
-        # Update Module
-        with course_subtabs[3]:
-            st.subheader("Update Existing Module")
-            modules = c.execute("SELECT * FROM modules").fetchall()
-            if modules:
-                module_options = {f"{m[2]} (ID:{m[0]})": m[0] for m in modules}
-                selected_module = st.selectbox("Select Module to Update", list(module_options.keys()))
-                module_data = c.execute("SELECT * FROM modules WHERE module_id=?", (module_options[selected_module],)).fetchone()
-                with st.form("update_module_form"):
-                    title = st.text_input("Module Title", value=module_data[2])
-                    desc = st.text_area("Module Description", value=module_data[3])
-                    module_type = st.selectbox("Module Type", ["Video","PDF","Quiz","Other"], index=["Video","PDF","Quiz","Other"].index(module_data[4]))
-                    link = st.text_input("Link (optional)", value=module_data[6] if module_data[6] else "")
-                    submitted = st.form_submit_button("Update Module")
-                    if submitted:
-                        update_module(module_data[0], title, desc, module_type, module_data[5], link)
-                        st.success("Module updated successfully!")
-            else:
-                st.info("No modules available.")
+            display_courses(courses, editable=True)
+        with course_tabs[1]:
+            st.subheader("Manage Modules")
+            selected_course = st.selectbox("Select Course", options=[(c[0], c[1]) for c in get_courses()], format_func=lambda x: x[1])
+            if selected_course:
+                course_id = selected_course[0]
+                modules = get_modules(course_id)
+                if modules:
+                    for m in modules:
+                        st.write(f"{m[2]} | Type: {m[4]}")
 
     # Logout
     with tabs[3]:
-        if st.button("Logout Admin"):
+        if st.button("Logout"):
             st.session_state.clear()
             st.session_state["page"] = "home"
             st.experimental_rerun()
 
-    render_footer()
-
 # ---------------------------
-# Main
+# Page Routing
 # ---------------------------
 if "page" not in st.session_state:
     st.session_state["page"] = "home"
