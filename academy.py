@@ -54,7 +54,6 @@ c.execute('''CREATE TABLE IF NOT EXISTS student_courses (
    FOREIGN KEY(student_id) REFERENCES students(student_id),
    FOREIGN KEY(course_id) REFERENCES courses(course_id)
 )''')
-
 conn.commit()
 
 # ---------------------------
@@ -189,11 +188,11 @@ def display_courses(courses, enroll=False, student_id=None, show_modules=False, 
 </div>
             """, unsafe_allow_html=True)
             if enroll and student_id:
-                if st.button("Enroll", key=f"enroll_{course[0]}_{idx}", use_container_width=True):
+                if st.button("Enroll", key=f"enroll_{course[0]}_{idx}"):
                     enroll_student_in_course(student_id, course[0])
                     st.success(f"Enrolled in {course[1]}!")
             if editable:
-                if st.button("Edit Course", key=f"edit_{course[0]}_{idx}", use_container_width=True):
+                if st.button("Edit Course", key=f"edit_{course[0]}_{idx}"):
                     st.session_state["edit_course"] = course
                     st.session_state["page"] = "edit_course"
                     st.experimental_rerun()
@@ -222,14 +221,14 @@ def render_footer():
 </div>
 """, unsafe_allow_html=True)
 
-# ---------- Home Page ----------
+# --- Home, Signup, Login ---
 def page_home():
     render_logo_name()
     main_tabs = st.tabs(["Courses", "Student", "Admin"])
 
     with main_tabs[0]:
         st.subheader("Courses")
-        student_id = st.session_state.get("student", [None])[0] if "student" in st.session_state else None
+        student_id = st.session_state.get("student")[0] if "student" in st.session_state else None
         courses = get_courses()
         display_courses(courses, enroll=True, student_id=student_id)
 
@@ -245,16 +244,15 @@ def page_home():
 
     render_footer()
 
-# ---------- Signup ----------
 def page_signup():
     st.header("Create Profile")
     with st.form("signup_form"):
-        full_name = st.text_input("Full Name", key="signup_full_name")
+        full_name = st.text_input("Full Name", key="signup_name")
         email = st.text_input("Email ID", key="signup_email")
-        password = st.text_input("Password", type="password", help="Min 8 chars, 1 uppercase, 1 number, 1 special char", key="signup_pass")
+        password = st.text_input("Password", type="password", key="signup_pass", help="Min 8 chars, 1 uppercase, 1 number, 1 special char")
         gender = st.selectbox("Gender", ["Male","Female","Other"], key="signup_gender")
-        profession = st.text_input("Profession", key="signup_profession")
-        institution = st.text_input("Institution", key="signup_institution")
+        profession = st.text_input("Profession", key="signup_prof")
+        institution = st.text_input("Institution", key="signup_inst")
         submitted = st.form_submit_button("Submit")
         if submitted:
             if not is_valid_email(email):
@@ -265,12 +263,9 @@ def page_signup():
                 success = add_student(full_name, email, password, gender, profession, institution)
                 if success:
                     st.success("Profile created successfully! Please login below.")
-                    st.session_state["page"] = "home"
-                    st.experimental_rerun()
                 else:
                     st.error("Email already registered. Please login.")
 
-# ---------- Login ----------
 def page_login():
     st.header("Student Login")
     email = st.text_input("Email ID", key="login_email")
@@ -279,12 +274,10 @@ def page_login():
         student = authenticate_student(email, password)
         if student:
             st.session_state["student"] = student
-            st.session_state["page"] = "student_dashboard"
-            st.experimental_rerun()
         else:
             st.error("Invalid credentials.")
 
-# ---------- Student Dashboard ----------
+# --- Student Dashboard ---
 def page_student_dashboard():
     render_logo_name()
     st.header("Student Dashboard")
@@ -299,24 +292,21 @@ def page_student_dashboard():
         enrolled_courses = get_student_courses(student[0])
         display_courses(enrolled_courses, show_modules=True)
         if st.button("Logout", key="student_logout"):
-            st.session_state.clear()
-            st.session_state["page"] = "home"
-            st.experimental_rerun()
+            del st.session_state["student"]
     else:
         st.warning("Please login first.")
 
-# ---------- Admin ----------
+# --- Admin ---
 def page_admin():
     st.header("Admin Login")
     admin_pass = st.text_input("Enter Admin Password", type="password", key="admin_pass")
-    if st.button("Login as Admin", key="admin_login_btn"):
+    if st.button("Login as Admin", key="admin_btn"):
         if admin_pass == "eintrust2025":
             st.session_state["page"] = "admin_dashboard"
-            st.experimental_rerun()
         else:
             st.error("Wrong admin password.")
 
-# ---------- Admin Dashboard ----------
+# --- Admin Dashboard ---
 def page_admin_dashboard():
     render_logo_name()
     st.header("Admin Dashboard")
@@ -326,7 +316,6 @@ def page_admin_dashboard():
         total_courses = c.execute("SELECT COUNT(*) FROM courses").fetchone()[0]
         total_modules = c.execute("SELECT COUNT(*) FROM modules").fetchone()[0]
         total_students = c.execute("SELECT COUNT(*) FROM students").fetchone()[0]
-
         cols = st.columns(3)
         cols[0].markdown(f"<div class='card'><div class='card-title'>{total_courses}</div><div class='card-subtitle'>Courses</div></div>", unsafe_allow_html=True)
         cols[1].markdown(f"<div class='card'><div class='card-title'>{total_modules}</div><div class='card-subtitle'>Modules</div></div>", unsafe_allow_html=True)
@@ -343,8 +332,6 @@ def page_admin_dashboard():
 
     with tabs[2]:
         course_subtabs = st.tabs(["Add Course", "Add Module", "Update Course", "Update Module"])
-
-        # ---------- Add Course ----------
         with course_subtabs[0]:
             st.subheader("Add Course")
             with st.form("add_course_form"):
@@ -356,12 +343,11 @@ def page_admin_dashboard():
                     add_course(title, subtitle, desc, price)
                     st.success("Course added successfully!")
 
-        # ---------- Add Module ----------
         with course_subtabs[1]:
             st.subheader("Add Module")
             courses = get_courses()
-            course_options = {c[1]: c[0] for c in courses}
-            if course_options:
+            if courses:
+                course_options = {c[1]: c[0] for c in courses}
                 selected_course = st.selectbox("Select Course", options=list(course_options.keys()), key="add_module_course")
                 title = st.text_input("Module Title", key="add_module_title")
                 desc = st.text_area("Description", key="add_module_desc")
@@ -371,75 +357,61 @@ def page_admin_dashboard():
                 if st.button("Add Module", key="add_module_btn"):
                     add_module(course_options[selected_course], title, desc, mtype, convert_file_to_bytes(file), link)
                     st.success("Module added successfully!")
-            else:
-                st.info("Please add a course first.")
 
-        # ---------- Update / Delete Course ----------
         with course_subtabs[2]:
             st.subheader("Update / Delete Course")
             courses = get_courses()
-            course_options = {c[1]: c[0] for c in courses}
-            if course_options:
+            if courses:
+                course_options = {c[1]: c[0] for c in courses}
                 selected_course = st.selectbox("Select Course to Edit", options=list(course_options.keys()), key="upd_course_select")
                 course_data = c.execute("SELECT * FROM courses WHERE course_id=?", (course_options[selected_course],)).fetchone()
                 if course_data:
                     title = st.text_input("Course Title", course_data[1], key="upd_course_title")
                     subtitle = st.text_input("Subtitle", course_data[2], key="upd_course_subtitle")
                     desc = st.text_area("Description", course_data[3], key="upd_course_desc")
-                    price = st.number_input("Price", course_data[4], key="upd_course_price")
+                    price = st.number_input("Price", value=course_data[4], key="upd_course_price")
                     if st.button("Update Course", key="upd_course_btn"):
                         update_course(course_data[0], title, subtitle, desc, price)
                         st.success("Course updated successfully!")
                     if st.button("Delete Course", key="del_course_btn"):
                         delete_course(course_data[0])
                         st.success("Course deleted successfully!")
-            else:
-                st.info("No courses available to update/delete.")
 
-        # ---------- Update / Delete Module ----------
         with course_subtabs[3]:
             st.subheader("Update / Delete Module")
             courses = get_courses()
-            course_options = {c[1]: c[0] for c in courses}
-            if course_options:
+            if courses:
+                course_options = {c[1]: c[0] for c in courses}
                 selected_course = st.selectbox("Select Course", options=list(course_options.keys()), key="upd_module_course")
                 modules = get_modules(course_options[selected_course])
-                module_options = {m[2]: m[0] for m in modules}
-                if module_options:
+                if modules:
+                    module_options = {m[2]: m[0] for m in modules}
                     selected_module = st.selectbox("Select Module", options=list(module_options.keys()), key="upd_module_select")
                     module_data = c.execute("SELECT * FROM modules WHERE module_id=?", (module_options[selected_module],)).fetchone()
                     if module_data:
                         title = st.text_input("Module Title", module_data[2], key="upd_module_title")
                         desc = st.text_area("Description", module_data[3], key="upd_module_desc")
                         mtype = st.selectbox("Module Type", ["Video","PDF","Link","Other"], index=["Video","PDF","Link","Other"].index(module_data[4]), key="upd_module_type")
-                        file = st.file_uploader("Upload File (Optional)", key="upd_module_file")
-                        link = st.text_input("Link", module_data[6], key="upd_module_link")
+                        file = st.file_uploader("Upload File (optional)", key="upd_module_file")
+                        link = st.text_input("Link", module_data[5] or "", key="upd_module_link")
                         if st.button("Update Module", key="upd_module_btn"):
-                            update_module(module_data[0], title, desc, mtype, convert_file_to_bytes(file) if file else module_data[5], link)
+                            update_module(module_data[0], title, desc, mtype, convert_file_to_bytes(file), link)
                             st.success("Module updated successfully!")
                         if st.button("Delete Module", key="del_module_btn"):
                             delete_module(module_data[0])
                             st.success("Module deleted successfully!")
-                else:
-                    st.info("No modules available for selected course.")
-            else:
-                st.info("Please add a course first.")
 
     with tabs[3]:
-        if st.button("Logout Admin"):
-            st.session_state.clear()
-            st.session_state["page"] = "home"
-            st.experimental_rerun()
+        if st.button("Logout Admin", key="logout_admin"):
+            if "page" in st.session_state:
+                del st.session_state["page"]
 
-    render_footer()
-
-# ---------- Main ----------
-if "page" not in st.session_state:
-    st.session_state["page"] = "home"
-
-if st.session_state["page"] == "home":
-    page_home()
-elif st.session_state["page"] == "student_dashboard":
+# ---------------------------
+# Run App
+# ---------------------------
+if "student" in st.session_state:
     page_student_dashboard()
-elif st.session_state["page"] == "admin_dashboard":
+elif st.session_state.get("page") == "admin_dashboard":
     page_admin_dashboard()
+else:
+    page_home()
