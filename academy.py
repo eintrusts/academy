@@ -2,6 +2,7 @@ import streamlit as st
 import sqlite3
 import re
 import pandas as pd
+from datetime import datetime
 
 # ---------------------------
 # DB Setup
@@ -80,11 +81,12 @@ def get_modules(course_id):
     return c.execute("SELECT * FROM modules WHERE course_id=? ORDER BY module_id ASC", (course_id,)).fetchall()
 
 def add_student(full_name, email, password, gender, profession, institution):
-    import datetime
-    now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     try:
-        c.execute("INSERT INTO students (full_name,email,password,gender,profession,institution,first_enrollment,last_login) VALUES (?,?,?,?,?,?,?,?)",
-                  (full_name, email, password, gender, profession, institution, now, now))
+        c.execute(
+            "INSERT INTO students (full_name,email,password,gender,profession,institution,first_enrollment,last_login) VALUES (?,?,?,?,?,?,?,?)",
+            (full_name, email, password, gender, profession, institution, now, now)
+        )
         conn.commit()
         return True
     except sqlite3.IntegrityError:
@@ -136,15 +138,39 @@ def delete_module(module_id):
     conn.commit()
 
 # ---------------------------
-# Header (Logo + Name)
+# Page Config + CSS
 # ---------------------------
-def display_header():
-    st.markdown("""
-    <div style="display:flex; align-items:center; margin-bottom:20px;">
-        <img src="https://github.com/eintrusts/CAP/blob/main/EinTrust%20%20(2).png?raw=true" width="60" style="margin-right:15px;">
-        <h1 style="margin:0; font-family:'Times New Roman', serif; color:#000000;">EinTrust Academy</h1>
-    </div>
-    """, unsafe_allow_html=True)
+st.set_page_config(page_title="EinTrust Academy", layout="wide")
+st.markdown("""
+<style>
+body {background-color: #0d0f12; color: #e0e0e0; font-family: 'Times New Roman', serif;}
+.stApp {background-color: #0d0f12; color: #e0e0e0; font-family: 'Times New Roman', serif;}
+.stTextInput > div > div > input,
+.stSelectbox > div > div > select,
+.stTextArea > div > textarea,
+.stNumberInput > div > input {
+   background-color: #1e1e1e; color: #f5f5f5; border: 1px solid #333333; border-radius: 6px;
+}
+.unique-btn button {
+   background-color: #4CAF50 !important;
+   color: white !important;
+   border-radius: 8px !important;
+   border: none !important;
+   padding: 12px 25px !important;
+   font-weight: bold !important;
+   width: 100%;
+}
+.unique-btn button:hover {background-color: #45a049 !important; color: #ffffff !important;}
+.course-card {background: #1c1c1c; border-radius: 12px; padding: 16px; margin: 12px; box-shadow: 0px 4px 10px rgba(0,0,0,0.6);}
+.course-title {font-size: 22px; font-weight: bold; color: #f0f0f0;}
+.course-subtitle {font-size: 16px; color: #b0b0b0;}
+.course-desc {font-size: 14px; color: #cccccc;}
+.section-header {border-bottom: 1px solid #333333; padding-bottom: 8px; margin-bottom: 10px; font-size: 20px;}
+.card {background:#1e1e1e; border-radius:10px; padding:20px; text-align:center; margin:10px;}
+.card-title {font-size:26px; font-weight:bold; color:#4CAF50;}
+.card-subtitle {font-size:16px; color:#bbbbbb;}
+</style>
+""", unsafe_allow_html=True)
 
 # ---------------------------
 # Display Courses
@@ -168,6 +194,11 @@ def display_courses(courses, enroll=False, student_id=None, show_modules=False, 
                 if st.button("Enroll", key=f"enroll_{course[0]}_{idx}", use_container_width=True):
                     enroll_student_in_course(student_id, course[0])
                     st.success(f"Enrolled in {course[1]}!")
+            if editable:
+                if st.button("Edit Course", key=f"edit_{course[0]}_{idx}", use_container_width=True):
+                    st.session_state["edit_course"] = course
+                    st.session_state["page"] = "edit_course"
+                    st.experimental_rerun()
             if show_modules:
                 modules = get_modules(course[0])
                 if modules:
@@ -178,15 +209,24 @@ def display_courses(courses, enroll=False, student_id=None, show_modules=False, 
 # ---------------------------
 # Pages
 # ---------------------------
+def page_header():
+    st.markdown("""
+<div style="display: flex; align-items: center; margin-bottom: 20px;">
+<h1 style="margin:0; font-family:'Times New Roman', serif; color:#ffffff;">EinTrust Academy</h1>
+</div>
+""", unsafe_allow_html=True)
+
 def page_home():
-    display_header()
+    page_header()
     main_tabs = st.tabs(["Courses", "Student", "Admin"])
+
     # Courses Tab
     with main_tabs[0]:
         st.subheader("Courses")
         student_id = st.session_state.get("student", [None])[0] if "student" in st.session_state else None
         courses = get_courses()
         display_courses(courses, enroll=True, student_id=student_id)
+
     # Student Tab
     with main_tabs[1]:
         student_tabs = st.tabs(["Signup", "Login"])
@@ -194,14 +234,17 @@ def page_home():
             page_signup()
         with student_tabs[1]:
             page_login()
+
     # Admin Tab
     with main_tabs[2]:
         page_admin()
+
     st.markdown("""
-<div style="text-align:center; padding:10px; color:#888888; margin-top:40px;">
-&copy; 2025 EinTrust. All rights reserved.
+<div style="position: relative; bottom: 0; width: 100%; text-align: center; padding: 10px; color: #888888; margin-top: 40px;">
+&copy; 2025 EinTrust. 
+All rights reserved.
 </div>
-    """, unsafe_allow_html=True)
+""", unsafe_allow_html=True)
 
 def page_signup():
     st.header("Create Profile")
@@ -221,7 +264,9 @@ def page_signup():
             else:
                 success = add_student(full_name, email, password, gender, profession, institution)
                 if success:
-                    st.success("Profile created successfully! Please login.")
+                    st.success("Profile created successfully! Redirecting to login...")
+                    st.session_state["page"] = "home"
+                    st.experimental_rerun()
                 else:
                     st.error("Email already registered. Please login.")
 
@@ -239,7 +284,7 @@ def page_login():
             st.error("Invalid credentials.")
 
 def page_student_dashboard():
-    display_header()
+    page_header()
     st.header("Student Dashboard")
     student = st.session_state.get("student")
     if student:
@@ -269,17 +314,23 @@ def page_admin():
             st.error("Wrong admin password.")
 
 def page_admin_dashboard():
-    display_header()
+    page_header()
     st.header("Admin Dashboard")
+
     tabs = st.tabs(["Dashboard", "Students Data", "Courses Data", "Logout"])
+
+    # Dashboard
     with tabs[0]:
         total_courses = c.execute("SELECT COUNT(*) FROM courses").fetchone()[0]
         total_modules = c.execute("SELECT COUNT(*) FROM modules").fetchone()[0]
         total_students = c.execute("SELECT COUNT(*) FROM students").fetchone()[0]
+
         cols = st.columns(3)
-        cols[0].markdown(f"<div style='text-align:center; padding:20px;'><h2>{total_courses}</h2>Courses</div>", unsafe_allow_html=True)
-        cols[1].markdown(f"<div style='text-align:center; padding:20px;'><h2>{total_modules}</h2>Modules</div>", unsafe_allow_html=True)
-        cols[2].markdown(f"<div style='text-align:center; padding:20px;'><h2>{total_students}</h2>Students</div>", unsafe_allow_html=True)
+        cols[0].markdown(f"<div class='card'><div class='card-title'>{total_courses}</div><div class='card-subtitle'>Courses</div></div>", unsafe_allow_html=True)
+        cols[1].markdown(f"<div class='card'><div class='card-title'>{total_modules}</div><div class='card-subtitle'>Modules</div></div>", unsafe_allow_html=True)
+        cols[2].markdown(f"<div class='card'><div class='card-title'>{total_students}</div><div class='card-subtitle'>Students</div></div>", unsafe_allow_html=True)
+
+    # Students Data
     with tabs[1]:
         st.subheader("Students Data")
         students = c.execute("SELECT * FROM students ORDER BY student_id DESC").fetchall()
@@ -288,6 +339,8 @@ def page_admin_dashboard():
             st.dataframe(df)
         else:
             st.info("No students found.")
+
+    # Courses Data
     with tabs[2]:
         course_subtabs = st.tabs(["Add Course", "Add Module", "Update Course", "Update Module"])
 
@@ -323,7 +376,8 @@ def page_admin_dashboard():
                         st.success(f"Module '{title}' added successfully!")
             else:
                 st.info("Add courses first to add modules.")
-            # Update Course
+
+        # Update Course
         with course_subtabs[2]:
             st.subheader("Update Existing Course")
             courses = get_courses()
@@ -345,7 +399,8 @@ def page_admin_dashboard():
                     st.success(f"Course '{title}' deleted successfully!")
             else:
                 st.info("No courses found.")
-            # Update Module
+
+        # Update Module
         with course_subtabs[3]:
             st.subheader("Update Existing Module")
             courses = get_courses()
@@ -361,29 +416,29 @@ def page_admin_dashboard():
                         title = st.text_input("Module Title", value=module_data[2])
                         desc = st.text_area("Module Description", value=module_data[3])
                         module_type = st.selectbox("Module Type", ["Video","PDF","Quiz","Other"], index=["Video","PDF","Quiz","Other"].index(module_data[4]))
-                        uploaded_file = st.file_uploader("Upload File (optional)")
-                        link = st.text_input("Link (optional)", value=module_data[6] if module_data[6] else "")
+                        link = st.text_input("Link", value=module_data[6] if module_data[6] else "")
                         submitted = st.form_submit_button("Update Module")
                         if submitted:
-                            file_bytes = convert_file_to_bytes(uploaded_file) if uploaded_file else module_data[5]
-                            update_module(module_data[0], title, desc, module_type, file_bytes, link)
+                            update_module(module_options[selected_module], title, desc, module_type, module_data[5], link)
                             st.success(f"Module '{title}' updated successfully!")
                     if st.button("Delete Module"):
                         delete_module(module_data[0])
-                        st.success(f"Module '{module_data[2]}' deleted successfully!")
+                        st.success(f"Module '{title}' deleted successfully!")
                 else:
                     st.info("No modules found for this course.")
             else:
-                st.info("No courses found.")
-        
+                st.info("Add courses first to add modules.")
+
+    # Logout
     with tabs[3]:
+        st.warning("Logout to exit Admin Dashboard")
         if st.button("Logout Admin"):
             st.session_state.clear()
             st.session_state["page"] = "home"
             st.experimental_rerun()
 
 # ---------------------------
-# Router
+# Main App
 # ---------------------------
 if "page" not in st.session_state:
     st.session_state["page"] = "home"
