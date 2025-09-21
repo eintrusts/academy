@@ -1,8 +1,8 @@
 import streamlit as st
 import sqlite3
 import re
-import pandas as pd
 from datetime import datetime
+import pandas as pd
 
 # ---------------------------
 # DB Setup
@@ -10,28 +10,8 @@ from datetime import datetime
 conn = sqlite3.connect("academy.db", check_same_thread=False)
 c = conn.cursor()
 
-# Courses table
-c.execute('''CREATE TABLE IF NOT EXISTS courses (
-   course_id INTEGER PRIMARY KEY AUTOINCREMENT,
-   title TEXT,
-   subtitle TEXT,
-   description TEXT,
-   price REAL,
-   views INTEGER DEFAULT 0
-)''')
-
-# Modules table
-c.execute('''CREATE TABLE IF NOT EXISTS modules (
-   module_id INTEGER PRIMARY KEY AUTOINCREMENT,
-   course_id INTEGER,
-   title TEXT,
-   description TEXT,
-   module_type TEXT,
-   file BLOB,
-   link TEXT,
-   views INTEGER DEFAULT 0,
-   FOREIGN KEY(course_id) REFERENCES courses(course_id)
-)''')
+# Drop students table only to fix schema mismatch (safe for dev)
+c.execute("DROP TABLE IF EXISTS students")
 
 # Students table
 c.execute('''
@@ -48,14 +28,43 @@ CREATE TABLE IF NOT EXISTS students (
 )
 ''')
 
+# Courses table
+c.execute('''
+CREATE TABLE IF NOT EXISTS courses (
+   course_id INTEGER PRIMARY KEY AUTOINCREMENT,
+   title TEXT,
+   subtitle TEXT,
+   description TEXT,
+   price REAL,
+   views INTEGER DEFAULT 0
+)
+''')
+
+# Modules table
+c.execute('''
+CREATE TABLE IF NOT EXISTS modules (
+   module_id INTEGER PRIMARY KEY AUTOINCREMENT,
+   course_id INTEGER,
+   title TEXT,
+   description TEXT,
+   module_type TEXT,
+   file BLOB,
+   link TEXT,
+   views INTEGER DEFAULT 0,
+   FOREIGN KEY(course_id) REFERENCES courses(course_id)
+)
+''')
+
 # Student-Courses relation
-c.execute('''CREATE TABLE IF NOT EXISTS student_courses (
+c.execute('''
+CREATE TABLE IF NOT EXISTS student_courses (
    id INTEGER PRIMARY KEY AUTOINCREMENT,
    student_id INTEGER,
    course_id INTEGER,
    FOREIGN KEY(student_id) REFERENCES students(student_id),
    FOREIGN KEY(course_id) REFERENCES courses(course_id)
-)''')
+)
+''')
 
 conn.commit()
 
@@ -213,7 +222,7 @@ def display_courses(courses, enroll=False, student_id=None, show_modules=False, 
 # Pages
 # ---------------------------
 def page_home():
-    st.markdown("<h1 style='color:#ffffff;'>EinTrust Academy</h1>", unsafe_allow_html=True)
+    st.markdown("<h1 style='color:white;'>EinTrust Academy</h1>", unsafe_allow_html=True)
 
     main_tabs = st.tabs(["Courses", "Student", "Admin"])
 
@@ -236,12 +245,7 @@ def page_home():
     with main_tabs[2]:
         page_admin()
 
-    st.markdown("""
-<div style="position: relative; bottom: 0; width: 100%; text-align: center; padding: 10px; color: #888888; margin-top: 40px;">
-&copy; 2025 EinTrust. 
-All rights reserved.
-</div>
-    """, unsafe_allow_html=True)
+    st.markdown("<div style='text-align:center; color:#888888; margin-top:40px;'>&copy; 2025 EinTrust. All rights reserved.</div>", unsafe_allow_html=True)
 
 def page_signup():
     st.header("Create Profile")
@@ -263,7 +267,8 @@ def page_signup():
                 if success:
                     st.success("Profile created successfully! Redirecting to login...")
                     st.session_state["page"] = "home"
-                    st.rerun()
+                    st.session_state["show_login"] = True
+                    st.experimental_rerun()
                 else:
                     st.error("Email already registered. Please login.")
 
@@ -276,7 +281,7 @@ def page_login():
         if student:
             st.session_state["student"] = student
             st.session_state["page"] = "student_dashboard"
-            st.rerun()
+            st.experimental_rerun()
         else:
             st.error("Invalid credentials.")
 
@@ -295,7 +300,7 @@ def page_student_dashboard():
         if st.button("Logout"):
             st.session_state.clear()
             st.session_state["page"] = "home"
-            st.rerun()
+            st.experimental_rerun()
     else:
         st.warning("Please login first.")
 
@@ -305,12 +310,13 @@ def page_admin():
     if st.button("Login as Admin"):
         if admin_pass == "eintrust2025":
             st.session_state["page"] = "admin_dashboard"
-            st.rerun()
+            st.experimental_rerun()
         else:
             st.error("Wrong admin password.")
 
 def page_admin_dashboard():
     st.header("Admin Dashboard")
+
     tabs = st.tabs(["Dashboard", "Students Data", "Courses Data", "Logout"])
 
     # Dashboard
@@ -421,19 +427,19 @@ def page_admin_dashboard():
                         delete_module(module_data[0])
                         st.success(f"Module '{title}' deleted successfully!")
                 else:
-                    st.info("No modules found for this course.")
+                    st.info("No modules found.")
             else:
-                st.info("No courses found to update modules.")
+                st.info("No courses found.")
 
     # Logout
     with tabs[3]:
-        if st.button("Logout"):
+        if st.button("Logout Admin"):
             st.session_state.clear()
             st.session_state["page"] = "home"
-            st.rerun()
+            st.experimental_rerun()
 
 # ---------------------------
-# Routing
+# Main Routing
 # ---------------------------
 if "page" not in st.session_state:
     st.session_state["page"] = "home"
