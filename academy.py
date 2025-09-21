@@ -32,7 +32,7 @@ c.execute('''CREATE TABLE IF NOT EXISTS modules (
    FOREIGN KEY(course_id) REFERENCES courses(course_id)
 )''')
 
-# Students table
+# Students table (kept all columns as in reference)
 c.execute('''CREATE TABLE IF NOT EXISTS students (
    student_id INTEGER PRIMARY KEY AUTOINCREMENT,
    full_name TEXT,
@@ -81,8 +81,10 @@ def get_modules(course_id):
 
 def add_student(full_name, email, password, gender, profession, institution):
     try:
-        c.execute("INSERT INTO students (full_name,email,password,gender,profession,institution,first_enrollment,last_login) VALUES (?,?,?,?,?,?,datetime('now'),datetime('now'))",
-                  (full_name, email, password, gender, profession, institution))
+        c.execute(
+            "INSERT INTO students (full_name,email,password,gender,profession,institution,first_enrollment,last_login) VALUES (?,?,?,?,?,?,datetime('now'),datetime('now'))",
+            (full_name, email, password, gender, profession, institution)
+        )
         conn.commit()
         return True
     except sqlite3.IntegrityError:
@@ -147,16 +149,6 @@ body {background-color: #0d0f12; color: #e0e0e0;}
 .stNumberInput > div > input {
    background-color: #1e1e1e; color: #f5f5f5; border: 1px solid #333333; border-radius: 6px;
 }
-.unique-btn button {
-   background-color: #4CAF50 !important;
-   color: white !important;
-   border-radius: 8px !important;
-   border: none !important;
-   padding: 12px 25px !important;
-   font-weight: bold !important;
-   width: 100%;
-}
-.unique-btn button:hover {background-color: #45a049 !important; color: #ffffff !important;}
 .course-card {background: #1c1c1c; border-radius: 12px; padding: 16px; margin: 12px; box-shadow: 0px 4px 10px rgba(0,0,0,0.6);}
 .course-title {font-size: 22px; font-weight: bold; color: #f0f0f0;}
 .course-subtitle {font-size: 16px; color: #b0b0b0;}
@@ -171,7 +163,7 @@ body {background-color: #0d0f12; color: #e0e0e0;}
 # ---------------------------
 # Display Courses
 # ---------------------------
-def display_courses(courses, enroll=False, student_id=None, show_modules=False, editable=False):
+def display_courses(courses, enroll=False, student_id=None, show_modules=False):
     if not courses:
         st.info("No courses available.")
         return
@@ -190,11 +182,6 @@ def display_courses(courses, enroll=False, student_id=None, show_modules=False, 
                 if st.button("Enroll", key=f"enroll_{course[0]}_{idx}", use_container_width=True):
                     enroll_student_in_course(student_id, course[0])
                     st.success(f"Enrolled in {course[1]}!")
-            if editable:
-                if st.button("Edit Course", key=f"edit_{course[0]}_{idx}", use_container_width=True):
-                    st.session_state["edit_course"] = course
-                    st.session_state["page"] = "edit_course"
-                    st.rerun()
             if show_modules:
                 modules = get_modules(course[0])
                 if modules:
@@ -208,21 +195,18 @@ def display_courses(courses, enroll=False, student_id=None, show_modules=False, 
 def page_home():
     st.markdown("""
 <div style="display: flex; align-items: center; margin-bottom: 20px;">
-<img src="https://github.com/eintrusts/CAP/blob/main/EinTrust%20%20(2).png?raw=true" width="60" style="margin-right: 15px;">
 <h1 style="margin:0; color:#ffffff;">EinTrust Academy</h1>
 </div>
     """, unsafe_allow_html=True)
 
     main_tabs = st.tabs(["Courses", "Student", "Admin"])
 
-    # Courses Tab
     with main_tabs[0]:
         st.subheader("Courses")
         student_id = st.session_state.get("student", [None])[0] if "student" in st.session_state else None
         courses = get_courses()
         display_courses(courses, enroll=True, student_id=student_id)
 
-    # Student Tab
     with main_tabs[1]:
         student_tabs = st.tabs(["Signup", "Login"])
         with student_tabs[0]:
@@ -230,14 +214,12 @@ def page_home():
         with student_tabs[1]:
             page_login()
 
-    # Admin Tab
     with main_tabs[2]:
         page_admin()
 
     st.markdown("""
-<div style="position: relative; bottom: 0; width: 100%; text-align: center; padding: 10px; color: #888888; margin-top: 40px;">
-&copy; 2025 EinTrust. 
-All rights reserved.
+<div style="text-align: center; padding: 10px; color: #888888; margin-top: 40px;">
+&copy; 2025 EinTrust. All rights reserved.
 </div>
     """, unsafe_allow_html=True)
 
@@ -246,7 +228,7 @@ def page_signup():
     with st.form("signup_form"):
         full_name = st.text_input("Full Name")
         email = st.text_input("Email ID")
-        password = st.text_input("Password", type="password", help="Min 8 chars, 1 uppercase, 1 number, 1 special char")
+        password = st.text_input("Password", type="password")
         gender = st.selectbox("Gender", ["Male","Female","Other"])
         profession = st.text_input("Profession")
         institution = st.text_input("Institution")
@@ -259,11 +241,9 @@ def page_signup():
             else:
                 success = add_student(full_name, email, password, gender, profession, institution)
                 if success:
-                    st.success("Profile created successfully! Redirecting to login...")
-                    st.session_state["page"] = "home"
-                    st.rerun()
+                    st.success("Profile created successfully! Please login.")
                 else:
-                    st.error("Email already registered. Please login.")
+                    st.error("Email already registered.")
 
 def page_login():
     st.header("Student Login")
@@ -442,5 +422,3 @@ elif st.session_state["page"] == "student_dashboard":
     page_student_dashboard()
 elif st.session_state["page"] == "admin_dashboard":
     page_admin_dashboard()
-elif st.session_state["page"] == "edit_course":
-    st.write("Course edit page (coming soon).")
