@@ -319,68 +319,118 @@ def page_login():
 
 # --- Student Dashboard with sub-tabs ---
 def page_student_dashboard():
-    render_logo_name()
-    st.header("Student Dashboard")
     student = st.session_state.get("student")
-    if student:
-        st.subheader(f"Welcome, {student[1]}")
-        sub_tabs = st.tabs(["Courses", "My Learning", "My Achievements", "Profile", "Logout"])
+    if not student:
+        st.error("Please login first")
+        return
 
-        # Courses Tab
-        with sub_tabs[0]:
-            courses = get_courses()
-            display_courses(courses, enroll=True, student_id=student[0])
+    st.title(f"Welcome {student[1]}")
 
-        # My Learning Tab
-        with sub_tabs[1]:
-            enrolled_courses = get_student_courses(student[0])
-            if enrolled_courses:
-                for course in enrolled_courses:
-                    st.markdown(f"**{course[1]}** - {course[2]}")
-                    modules = get_modules(course[0])
-                    if modules:
-                        for m in modules:
-                            st.write(f"- {m[2]} ({m[4]})")
-            else:
-                st.info("No enrolled courses.")
+    tabs = st.tabs(["Courses", "My Learning", "My Achievements", "Profile", "Logout"])
 
-        # My Achievements
-        with sub_tabs[2]:
-            achievements = [c for c in get_student_courses(student[0]) if c[5]]
-            if not achievements:
-                st.info("No completed courses yet.")
-            for course in achievements:
-                st.markdown(f"**{course[1]}** - {course[2]}")
-                pdf_bytes = generate_certificate(student[1], course[1])
-                st.download_button(
-                    label=f"Download Certificate: {course[1]}",
-                    data=pdf_bytes,
-                    file_name=f"{course[1]}_certificate.pdf",
-                    mime="application/pdf"
-                )
-
-        # Profile
-        with sub_tabs[3]:
-            st.subheader("Edit Profile")
-            full_name = st.text_input("Full Name", student[1])
-            email = st.text_input("Email", student[2])
-            gender = st.selectbox("Gender", ["Male","Female","Other"], index=["Male","Female","Other"].index(student[4]))
-            profession = st.text_input("Profession", student[5])
-            institution = st.text_input("Institution", student[6])
-            if st.button("Update Profile"):
-                c.execute("UPDATE students SET full_name=?, email=?, gender=?, profession=?, institution=? WHERE student_id=?",
-                          (full_name, email, gender, profession, institution, student[0]))
+    # Courses Tab
+    with tabs[0]:
+        courses = get_courses()
+        for c in courses:
+            st.markdown(f"### {c[1]} - {c[2]}")
+            st.write(c[3])
+            st.write(f"Price: {c[4]}")
+            if st.button(f"Enroll in {c[1]}", key=f"enroll_{c[0]}"):
+                conn = sqlite3.connect("academy.db")
+                cur = conn.cursor()
+                cur.execute("INSERT OR IGNORE INTO student_courses (student_id, course_id) VALUES (?, ?)", (student[0], c[0]))
                 conn.commit()
-                st.success("Profile updated successfully!")
-                st.session_state["student"] = c.execute("SELECT * FROM students WHERE student_id=?", (student[0],)).fetchone()
+                conn.close()
+                st.success(f"Enrolled in {c[1]}")
 
-        # Logout
-        with sub_tabs[4]:
-            if st.button("Logout"):
-                del st.session_state["student"]
-                st.experimental_rerun()
-    else:
-        st.warning("Please login first.")
+    # My Learning Tab
+    with tabs[1]:
+        enrolled_courses = get_student_courses(student[0])
+        if enrolled_courses:
+            for ec in enrolled_courses:
+                st.markdown(f"### {ec[1]} - {ec[2]}")
+                st.write(ec[3])
+                st.write(f"Status: {'Completed' if ec[5] else 'In Progress'}")
+                st.write(f"Time Spent: {ec[6]} seconds")
+                if not ec[5]:
+                    if st.button(f"Mark {ec[1]} as Completed", key=f"complete_{ec[0]}"):
+                        conn = sqlite3.connect("academy.db")
+                        cur = conn.cursor()
+                        cur.execute("UPDATE student_courses SET completed=1 WHERE student_id=? AND course_id=?", (student[0], ec[0]))
+                        conn.commit()
+                        conn.close()
+                        st.success(f"{ec[1]} marked as completed")
+                        st.rerun()
+        else:
+            st.info("You are not enrolled in any courses yet.")
+
+    # My Achievements Tab
+    with tabs[2]:
+        conn = sqlite3.connect("academy.db")
+        cur = conn.cursor()
+        completed_courses = cur.execute(
+            '''SELECT courses.course_id, courses.title, courses.subtitle, student_courses.time_spent
+               FROM courses JOIN student_courses ON courses.course_id = student_courses.course_id
+               WHERE student_courses.student_id=? AND student_courses.completed=1''',
+            (student[0],)
+        ).fetchall()
+        conn.close()
+
+        if completed_courses:
+            st.subheader("Your Achievements")
+            for cc in completed_courses:
+                st.markdown(f"### {cc[1]} - {cc[2]}")
+                st.write(f"Time Spent: {cc[3]} seconds")
+
+                cert_key = f"cert_{student[0]}_{cc[0]}"
+                if st.button(f"Download Certificate for {cc[1]}", key=cert_key):
+                    pdf = FPDF()
+                    pdf.add_page()
+                    pdf.set_font("Arial", 'B', 16)
+                    pdf.cell(200, 20, "Certificate of Completion", ln=True, align="C")
+                    pdf.ln(20)
+                    pdf.set_font("Arial", '', 12)
+                    pdf.multi_cell(0, 10, f"This is to certify that {student[1]} has successfully completed the course '{cc[1]}'.")
+                    pdf.ln(10)
+                    pdf.cell(0, 10, f"Time Spent: {cc[3]} seconds", ln=True)
+                    pdf.ln(20)
+                    pdf.cell(0, 10, "EinTrust Academy", ln=True, align="R")
+
+                    cert_file = f"certificate_{student[0]}_{cc[0]}.pdf"
+                    pdf.output(cert_file)
+
+                    with open(cert_file, "rb") as f:
+                        st.download_button(
+                            label="Download Certificate",
+                            data=f,
+                            file_name=cert_file,
+                            mime="application/pdf"
+                        )
+        else:
+            st.info("No achievements yet. Complete courses to earn certificates.")
+
+    # Profile Tab
+    with tabs[3]:
+        st.subheader("Edit Profile")
+        new_name = st.text_input("Name", value=student[1])
+        new_email = st.text_input("Email", value=student[2])
+        new_password = st.text_input("Password", type="password", value=student[3])
+        if st.button("Update Profile"):
+            conn = sqlite3.connect("academy.db")
+            cur = conn.cursor()
+            cur.execute("UPDATE students SET name=?, email=?, password=? WHERE student_id=?", (new_name, new_email, new_password, student[0]))
+            conn.commit()
+            conn.close()
+            st.success("Profile updated successfully")
+            st.session_state["student"] = (student[0], new_name, new_email, new_password)
+            st.rerun()
+
+    # Logout Tab
+    with tabs[4]:
+        if st.button("Logout"):
+            st.session_state.pop("student", None)
+            st.session_state["page"] = "home"
+            st.rerun()
 
 # --- Admin ---
 def page_admin():
