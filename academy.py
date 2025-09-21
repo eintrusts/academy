@@ -414,4 +414,4 @@ if "student" in st.session_state:
 elif st.session_state.get("page") == "admin_dashboard":
     page_admin_dashboard()
 else:
-    page_home(). 
+    page_home()
