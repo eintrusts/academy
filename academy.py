@@ -1,8 +1,8 @@
 import streamlit as st
 import sqlite3
 import re
-from datetime import datetime
 import pandas as pd
+from datetime import datetime
 
 # ---------------------------
 # DB Setup
@@ -10,39 +10,18 @@ import pandas as pd
 conn = sqlite3.connect("academy.db", check_same_thread=False)
 c = conn.cursor()
 
-# Drop students table only to fix schema mismatch (safe for dev)
-c.execute("DROP TABLE IF EXISTS students")
-
-# Students table
-c.execute('''
-CREATE TABLE IF NOT EXISTS students (
-   student_id INTEGER PRIMARY KEY AUTOINCREMENT,
-   full_name TEXT,
-   email TEXT UNIQUE,
-   password TEXT,
-   gender TEXT,
-   profession TEXT,
-   institution TEXT,
-   first_enrollment TEXT DEFAULT CURRENT_TIMESTAMP,
-   last_login TEXT DEFAULT CURRENT_TIMESTAMP
-)
-''')
-
 # Courses table
-c.execute('''
-CREATE TABLE IF NOT EXISTS courses (
+c.execute('''CREATE TABLE IF NOT EXISTS courses (
    course_id INTEGER PRIMARY KEY AUTOINCREMENT,
    title TEXT,
    subtitle TEXT,
    description TEXT,
    price REAL,
    views INTEGER DEFAULT 0
-)
-''')
+)''')
 
 # Modules table
-c.execute('''
-CREATE TABLE IF NOT EXISTS modules (
+c.execute('''CREATE TABLE IF NOT EXISTS modules (
    module_id INTEGER PRIMARY KEY AUTOINCREMENT,
    course_id INTEGER,
    title TEXT,
@@ -52,19 +31,29 @@ CREATE TABLE IF NOT EXISTS modules (
    link TEXT,
    views INTEGER DEFAULT 0,
    FOREIGN KEY(course_id) REFERENCES courses(course_id)
-)
-''')
+)''')
+
+# Students table
+c.execute('''CREATE TABLE IF NOT EXISTS students (
+   student_id INTEGER PRIMARY KEY AUTOINCREMENT,
+   full_name TEXT,
+   email TEXT UNIQUE,
+   password TEXT,
+   gender TEXT,
+   profession TEXT,
+   institution TEXT,
+   first_enrollment TEXT,
+   last_login TEXT
+)''')
 
 # Student-Courses relation
-c.execute('''
-CREATE TABLE IF NOT EXISTS student_courses (
+c.execute('''CREATE TABLE IF NOT EXISTS student_courses (
    id INTEGER PRIMARY KEY AUTOINCREMENT,
    student_id INTEGER,
    course_id INTEGER,
    FOREIGN KEY(student_id) REFERENCES students(student_id),
    FOREIGN KEY(course_id) REFERENCES courses(course_id)
-)
-''')
+)''')
 
 conn.commit()
 
@@ -210,7 +199,7 @@ def display_courses(courses, enroll=False, student_id=None, show_modules=False, 
                 if st.button("Edit Course", key=f"edit_{course[0]}_{idx}", use_container_width=True):
                     st.session_state["edit_course"] = course
                     st.session_state["page"] = "edit_course"
-                    st.rerun()
+                    st.experimental_rerun()
             if show_modules:
                 modules = get_modules(course[0])
                 if modules:
@@ -235,17 +224,17 @@ def page_home():
 
     # Student Tab
     with main_tabs[1]:
+        default_tab = 1 if st.session_state.get("show_login", False) else 0
         student_tabs = st.tabs(["Signup", "Login"])
-        with student_tabs[0]:
+        if default_tab == 0:
             page_signup()
-        with student_tabs[1]:
+        else:
             page_login()
+            st.session_state["show_login"] = False
 
     # Admin Tab
     with main_tabs[2]:
         page_admin()
-
-    st.markdown("<div style='text-align:center; color:#888888; margin-top:40px;'>&copy; 2025 EinTrust. All rights reserved.</div>", unsafe_allow_html=True)
 
 def page_signup():
     st.header("Create Profile")
@@ -266,7 +255,6 @@ def page_signup():
                 success = add_student(full_name, email, password, gender, profession, institution)
                 if success:
                     st.success("Profile created successfully! Redirecting to login...")
-                    st.session_state["page"] = "home"
                     st.session_state["show_login"] = True
                     st.experimental_rerun()
                 else:
@@ -427,19 +415,18 @@ def page_admin_dashboard():
                         delete_module(module_data[0])
                         st.success(f"Module '{title}' deleted successfully!")
                 else:
-                    st.info("No modules found.")
+                    st.info("Add modules first.")
             else:
-                st.info("No courses found.")
+                st.info("Add courses first.")
 
     # Logout
     with tabs[3]:
         if st.button("Logout Admin"):
             st.session_state.clear()
-            st.session_state["page"] = "home"
             st.experimental_rerun()
 
 # ---------------------------
-# Main Routing
+# Main
 # ---------------------------
 if "page" not in st.session_state:
     st.session_state["page"] = "home"
