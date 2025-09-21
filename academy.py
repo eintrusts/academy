@@ -286,59 +286,68 @@ def page_login():
 # ---------------------------
 def page_student_dashboard():
     render_logo_name()
+    st.header("Student Dashboard")
     student = st.session_state.get("student")
-    if not student:
-        st.warning("Please login first.")
-        return
+    if student:
+        st.subheader(f"Welcome, {student[1]}")
+        sub_tabs = st.tabs(["Courses", "My Learning", "My Achievements", "Profile", "Logout"])
 
-    st.header(f"Welcome, {student[1]}")
-    sub_tabs = st.tabs(["Courses", "My Learning", "My Achievements", "Profile", "Logout"])
+        # Courses Tab
+        with sub_tabs[0]:
+            courses = get_courses()
+            display_courses(courses, enroll=True, student_id=student[0])
 
-    with sub_tabs[0]:
-        st.subheader("All Courses")
-        courses = get_courses()
-        display_courses(courses, enroll=True, student_id=student[0])
+        # My Learning Tab
+        with sub_tabs[1]:
+            enrolled_courses = get_student_courses(student[0])
+            if enrolled_courses:
+                for course in enrolled_courses:
+                    st.markdown(f"**{course[1]}** - {course[2]}")
+                    modules = get_modules(course[0])
+                    if modules:
+                        for m in modules:
+                            st.write(f"- {m[2]} ({m[4]})")
+            else:
+                st.info("No enrolled courses.")
 
-    with sub_tabs[1]:
-        st.subheader("My Learning")
-        enrolled_courses = get_student_courses(student[0])
-        if enrolled_courses:
-            for course in enrolled_courses:
-                st.markdown(f"**{course[1]}** - Progress: {course[5]*100 if course[5] else 0}%")
-                modules = get_modules(course[0])
-                if modules:
-                    for m in modules:
-                        st.write(f"- {m[2]} ({m[4]})")
-        else:
-            st.info("No courses enrolled yet.")
+        # My Achievements
+        with sub_tabs[2]:
+            achievements = [c for c in get_student_courses(student[0]) if c[5]]
+            if not achievements:
+                st.info("No completed courses yet.")
+            for course in achievements:
+                st.markdown(f"**{course[1]}** - {course[2]}")
+                pdf_bytes = generate_certificate(student[1], course[1])
+                st.download_button(
+                    label=f"Download Certificate: {course[1]}",
+                    data=pdf_bytes,
+                    file_name=f"{course[1]}_certificate.pdf",
+                    mime="application/pdf"
+                )
 
-    with sub_tabs[2]:
-        st.subheader("My Achievements")
-        completed_courses = [c for c in get_student_courses(student[0]) if c[5]==1]
-        if completed_courses:
-            for c in completed_courses:
-                st.markdown(f"**{c[1]}** - Certificate: [Download](#)")
-        else:
-            st.info("No achievements yet.")
-
-    with sub_tabs[3]:
-        st.subheader("Profile")
-        with st.form("profile_form"):
-            full_name = st.text_input("Full Name", student[1], key="prof_name")
-            gender = st.selectbox("Gender", ["Male","Female","Other"], index=["Male","Female","Other"].index(student[4]), key="prof_gender")
-            profession = st.text_input("Profession", student[5], key="prof_prof")
-            institution = st.text_input("Institution", student[6], key="prof_inst")
-            if st.form_submit_button("Update Profile"):
-                update_student_profile(student[0], full_name, gender, profession, institution)
+        # Profile
+        with sub_tabs[3]:
+            st.subheader("Edit Profile")
+            full_name = st.text_input("Full Name", student[1])
+            email = st.text_input("Email", student[2])
+            gender = st.selectbox("Gender", ["Male","Female","Other"], index=["Male","Female","Other"].index(student[4]))
+            profession = st.text_input("Profession", student[5])
+            institution = st.text_input("Institution", student[6])
+            if st.button("Update Profile"):
+                c.execute("UPDATE students SET full_name=?, email=?, gender=?, profession=?, institution=? WHERE student_id=?",
+                          (full_name, email, gender, profession, institution, student[0]))
+                conn.commit()
                 st.success("Profile updated successfully!")
-                st.session_state["student"] = authenticate_student(student[2], student[3])  # refresh session
+                st.session_state["student"] = c.execute("SELECT * FROM students WHERE student_id=?", (student[0],)).fetchone()
 
-    with sub_tabs[4]:
-        if st.button("Logout"):
-            del st.session_state["student"]
-            st.session_state["page"] = "home"
-            st.experimental_rerun()
-
+        # Logout
+        with sub_tabs[4]:
+            if st.button("Logout"):
+                del st.session_state["student"]
+                st.experimental_rerun()
+    else:
+        st.warning("Please login first.")
+       
     render_footer()
 
 # ---------------------------
